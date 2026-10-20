@@ -50,7 +50,7 @@ Until `WANT_HOST` and `WANT_TAILNET` are set, `10-tailscale` reports NEEDS HUMAN
 ## Install
 Requirements: bash, `jq`, `flock`, `timeout`, `setsid`, passwordless `sudo -n`, and `curl` (only for the tarball fallback).
 ```bash
-git clone https://github.com/OWNER/grokbot-box-restore.git /workspace/src/grokbot-box-restore   # OWNER = this repo's owner
+git clone https://github.com/heyalchang/grokbot-box-restore.git /workspace/src/grokbot-box-restore   # OWNER = this repo's owner
 cd /workspace/src/grokbot-box-restore && ./install.sh
 $EDITOR /workspace/restore/config.env
 ```
