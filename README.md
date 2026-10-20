@@ -1,4 +1,4 @@
-# grokbot-box-selfheal
+# grokbot-box-heal
 
 A small self-heal kit for a Grok Bot box (the shared Linux VM your Grok Bot agents run on).
 
@@ -50,8 +50,8 @@ Until `WANT_HOST` and `WANT_TAILNET` are set, `10-tailscale` reports NEEDS HUMAN
 ## Install
 Requirements: bash, `jq`, `flock`, `timeout`, `setsid`, passwordless `sudo -n`, and `curl` (only for the tarball fallback).
 ```bash
-git clone https://github.com/heyalchang/grokbot-box-selfheal.git /workspace/src/grokbot-box-selfheal   # OWNER = this repo's owner
-cd /workspace/src/grokbot-box-selfheal && ./install.sh
+git clone https://github.com/heyalchang/grokbot-box-heal.git /workspace/src/grokbot-box-heal   # OWNER = this repo's owner
+cd /workspace/src/grokbot-box-heal && ./install.sh
 $EDITOR /workspace/restore/config.env
 ```
 `install.sh` is idempotent: re-run it after `git pull` to update. It copies scripts and items, creates `config.env` only if missing,
