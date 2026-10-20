@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# RESTORE — make the check pass again. Must be idempotent and non-interactive (stdin is /dev/null; hard limit 600 s).
+# Prefer offline sources under /workspace (e.g. a saved binary or .deb); fetch from the network only as a fallback.
+# Use `sudo -n` for root. Never print keys/tokens/state contents.
+# Exit codes (the runner relies on these):
+#   0   restored (the runner re-runs check to confirm)
+#   2   NEEDS HUMAN (e.g. needs an interactive login/approval) -> no agent fallback, runner alerts
+#   75  temporarily busy (e.g. a lock held) -> skipped this round
+#   any other nonzero = failed -> runner invokes the Grok agent with INSTRUCTIONS.md (rate-limited)
+# Env provided by the runner: ITEM_NAME, ITEM_DIR, RESTORE_CALLER, RESTORE_LOG.
+#
+# Example:
+#   sudo -n apt-get install -y socat >/dev/null 2>&1 || exit 1
+echo "template: replace me"
+exit 1

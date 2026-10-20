@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# 20-package-drift check: compare installed packages against the NEWEST daily baseline. Read-only.
+# exit 0: no missing/extra packages, or this exact drift was already reported (deduped). exit 1: new or changed drift.
+set -uo pipefail
+. "$(dirname "$0")/lib.sh"
+compute_drift || { echo "cannot check: $DRIFT_ERR"; exit 1; }
+bn=$(basename "$BASELINE")
+info=""; [ "$NC" -gt 0 ] && info="; $NC version change(s), informational: $(names "$CHANGED" 5)"
+if [ $((NM + NE)) -eq 0 ]; then
+  echo "no drift vs $bn ($(grep -vc '^#' "$BASELINE") pkgs)$info"; exit 0
+fi
+if [ "$ALERT_HASH" = "$(ack_field sha256)" ]; then
+  echo "drift unchanged since $(ack_field reported), already reported ($NM missing, $NE extra vs $bn; report $(ack_field report))$info"; exit 0
+fi
+echo "NEW drift vs $bn: $NM missing [$(names "$MISSING")], $NE extra [$(names "$EXTRA")]$info"
+exit 1

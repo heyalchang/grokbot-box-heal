@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# 20-package-drift restore: ALERT-ONLY. Never installs/removes packages, never writes a baseline.
+# Writes a dated diff report + dedupe record, then exits 2 (NEEDS HUMAN) so restore-all.sh returns 20.
+set -uo pipefail
+. "$(dirname "$0")/lib.sh"
+mkdir -p "$DRIFT_DIR"
+compute_drift || { echo "NEEDS HUMAN: cannot compute drift: $DRIFT_ERR"; exit 2; }
+[ $((NM + NE)) -eq 0 ] && { echo "no missing/extra packages (nothing to report)"; exit 0; }
+R="$DRIFT_DIR/drift-$(date +%F-%H%M%S).txt"
+i=1; while [ -e "$R" ]; do R="$DRIFT_DIR/drift-$(date +%F-%H%M%S)-$i.txt"; i=$((i + 1)); done
+{
+  echo "# Package drift report $(date '+%F %T %Z') (live check vs newest daily baseline)"
+  echo "# baseline: $BASELINE"
+  echo "# summary: $NM missing, $NE extra, $NC version change(s) (informational)"
+  echo "# alert-hash: $ALERT_HASH"
+  echo "# Nothing was installed or removed. The next daily snapshot will record the current set as the new"
+  echo "# baseline; reinstall/remove packages only if the box owner asks for that specific change."
+  write_diff_body
+} >"$R"
+printf 'sha256 %s\nreported %s\nbaseline %s\nreport %s\n' "$ALERT_HASH" "$(date '+%F %T %Z')" "$(basename "$BASELINE")" "$R" >"$ACK.tmp" && mv -f "$ACK.tmp" "$ACK"
+echo "NEEDS HUMAN: package drift vs $(basename "$BASELINE"): $NM missing [$(names "$MISSING" 5)], $NE extra [$(names "$EXTRA" 5)]; report $R"
+exit 2

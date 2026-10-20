@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# 30-gh-auth restore: re-link the persistent gh login and the git credential helper; never logs in fresh.
+export HOME=${HOME:-/home/box}
+WS=${BOX_WORKSPACE:-/workspace}
+CONF=${RESTORE_CONFIG:-$WS/restore/config.env}
+GH_USER=""
+# shellcheck disable=SC1090
+[ -r "$CONF" ] && . "$CONF"
+P=$WS/config/gh
+[ -s "$P/hosts.yml" ] || { echo "NEEDS LOGIN: no saved gh login in $P"; exit 2; }
+mkdir -p "$HOME/.config"
+if [ "$(readlink "$HOME/.config/gh")" != "$P" ]; then
+  [ -e "$HOME/.config/gh" ] && mv "$HOME/.config/gh" "$HOME/.config/gh.replaced.$(date +%s)"
+  ln -s "$P" "$HOME/.config/gh"
+fi
+command -v gh >/dev/null || { echo "gh binary missing (reinstall gh; it lives outside /workspace)"; exit 1; }
+gh auth setup-git >/dev/null 2>&1
+u=$(timeout 20 gh api user -q .login 2>/dev/null) || { echo "NEEDS LOGIN: saved gh token rejected"; exit 2; }
+if [ -n "$GH_USER" ] && [ "$u" != "$GH_USER" ]; then echo "NEEDS HUMAN: gh is signed in as $u, expected $GH_USER"; exit 2; fi
+exit 0

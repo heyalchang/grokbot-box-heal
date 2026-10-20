@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# 10-tailscale restore: wraps the standalone script (still usable on its own).
+# Its exit codes already follow the item contract: 0 ok, 2 NEEDS LOGIN (human), 75 busy, other = failed.
+TS_RESTORE_CALLER="${RESTORE_CALLER:-restore-all}" exec "${BOX_WORKSPACE:-/workspace}/bin/tailscale-restore.sh"

@@ -1,0 +1,6 @@
+# local settings and runtime state never belong in the repo
+config.env
+state/
+*.log
+drift/
+baselines/

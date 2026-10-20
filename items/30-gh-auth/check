@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# 30-gh-auth check: healthy when ~/.config/gh points at the persistent login in $BOX_WORKSPACE/config/gh and gh is signed in
+# (as GH_USER, if set in config.env). If GH_USER is empty and no persistent login exists, gh auth is not in use: pass.
+export HOME=${HOME:-/home/box}
+WS=${BOX_WORKSPACE:-/workspace}
+CONF=${RESTORE_CONFIG:-$WS/restore/config.env}
+GH_USER=""
+# shellcheck disable=SC1090
+[ -r "$CONF" ] && . "$CONF"
+P=$WS/config/gh
+if [ -z "$GH_USER" ] && [ ! -e "$P" ]; then echo "gh auth not set up (no GH_USER, no $P); nothing to check"; exit 0; fi
+[ "$(readlink "$HOME/.config/gh")" = "$P" ] || { echo "$HOME/.config/gh symlink missing"; exit 1; }
+command -v gh >/dev/null || { echo "gh binary missing"; exit 1; }
+git config --global --get-regexp '^credential\..*github\.com.*helper' >/dev/null || { echo "git credential helper for github.com missing"; exit 1; }
+u=$(timeout 20 gh api user -q .login 2>/dev/null) || { echo "gh not signed in (or GitHub unreachable)"; exit 1; }
+if [ -n "$GH_USER" ] && [ "$u" != "$GH_USER" ]; then echo "gh signed in as $u, expected $GH_USER"; exit 1; fi
+echo "signed in as $u"
