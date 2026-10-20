@@ -1,0 +1,6 @@
+# Changelog
+
+Newest first, one plain-English line per version. `selfheal-update.sh` prints these lines, so keep each to one line.
+
+- 1.1.0: adds optional weekly self-update (UPDATE_MODE=auto|ask|off in config.env; bin/selfheal-update.sh).
+- 1.0.0: initial release: restore runner, ~/.bashrc hook, Tailscale restore, package drift alerts, gh auth restore.

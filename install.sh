@@ -3,11 +3,13 @@
 #  - copies bin/*.sh            -> $WORKSPACE/bin/
 #  - copies items/*             -> $WORKSPACE/restore/items/ (overwrites kit files; never deletes your own items or DISABLED flags)
 #  - copies README.md           -> $WORKSPACE/restore/README.md
-#  - creates $WORKSPACE/restore/config.env from config.env.example if it is missing (never overwrites it)
+#  - creates $WORKSPACE/restore/config.env from config.env.example if it is missing (never overwrites it);
+#    if it exists, appends any keys new in the example with their defaults (marked "added by update")
+#  - records the kit version + commit in state/kit-version and this clone's path in state/kit-source
 #  - installs/updates the ~/.bashrc hook between "# >>> box auto-restore >>>" and "# <<< box auto-restore <<<"
 #    (replaces that block if present, otherwise prepends it; everything else in the file is left alone)
 #  - takes the first package baseline if none exists (dpkg-query only)
-# It never runs a login, never starts tailscaled, and never runs restore-all.
+# It never runs a login, never starts tailscaled, and never runs restore-all. Non-interactive.
 #
 # Usage: ./install.sh [--no-hook] [--no-baseline]
 # Env:   WORKSPACE (default /workspace)   BASHRC (default $HOME/.bashrc)   (override both to test in a scratch dir)
@@ -43,8 +45,20 @@ for d in "$HERE"/items/*/; do
   for f in "$d"* ; do [ -f "$f" ] && cp -p "$f" "$dest/"; done
 done
 install -m 0644 "$HERE/README.md" "$WS/restore/README.md"
+VER=$(tr -d ' \t\r\n' <"$HERE/VERSION" 2>/dev/null); VER=${VER:-unknown}
 if [ -e "$WS/restore/config.env" ]; then
   echo "kept existing $WS/restore/config.env"
+  # append keys that are new in the example (with the comment above them), never touching existing lines
+  added=$(awk -v cfg="$WS/restore/config.env" -v ver="$VER" '
+    BEGIN { while ((getline l < cfg) > 0) if (match(l, /^[A-Za-z_][A-Za-z0-9_]*=/)) have[substr(l, 1, RLENGTH - 1)] = 1 }
+    /^#/ { doc = doc $0 "\n"; next }
+    /^[A-Za-z_][A-Za-z0-9_]*=/ { k = substr($0, 1, index($0, "=") - 1)
+      if (!(k in have)) printf "\n# %s: added by update to v%s with its default\n%s%s\n", k, ver, doc, $0 }
+    { doc = "" }' "$HERE/config.env.example")
+  if [ -n "$added" ]; then
+    printf '%s\n' "$added" >>"$WS/restore/config.env"
+    echo "added new setting(s) to $WS/restore/config.env: $(printf '%s\n' "$added" | grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' | tr -d = | tr '\n' ' ')"
+  fi
 else
   install -m 0644 "$HERE/config.env.example" "$WS/restore/config.env"
   echo "created $WS/restore/config.env from the example: edit it (WANT_HOST, WANT_TAILNET, optional WANT_SUFFIX/WANT_IP/GH_USER)"
@@ -82,6 +96,11 @@ if [ "$DO_BASELINE" = 1 ] && command -v dpkg-query >/dev/null 2>&1 \
   BOX_WORKSPACE=$WS "$WS/bin/restore-baseline-snapshot.sh" --caller install || echo "warning: first package baseline failed; the hook retries later" >&2
   touch "$WS/restore/state/baseline-last-run"
 fi
+
+commit=$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)
+echo "$VER $commit" >"$WS/restore/state/kit-version"
+echo "$HERE" >"$WS/restore/state/kit-source"
+echo "kit v$VER (${commit:0:12}) from $HERE"
 
 cat <<NEXT
 

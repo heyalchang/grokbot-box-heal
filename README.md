@@ -16,6 +16,7 @@ apt packages, running daemons, and root-only files (even under `/workspace`) do 
 - A **runner** (`restore-all.sh`) walks the items in order: `check`, then `restore`, then `check` again, and (only for items that
   allow it) a rate-limited headless Grok agent fallback that follows the item's `INSTRUCTIONS.md`.
 - A **`~/.bashrc` hook** that triggers the runner from any shell (agent, SSH, login), cheaply and rate-limited.
+- An optional **weekly self-update** (`selfheal-update.sh`) that keeps the kit current from its git clone (see [Updates](#updates)).
 
 ## Layout after install
 ```
@@ -23,11 +24,13 @@ apt packages, running daemons, and root-only files (even under `/workspace`) do 
 /workspace/bin/tailscale-restore.sh            Tailscale restore (usable on its own)
 /workspace/bin/restore-baseline-snapshot.sh    daily package baseline
 /workspace/bin/restore-baseline-accept.sh      accept the current package set now (owner's explicit request only)
+/workspace/bin/selfheal-update.sh              weekly kit self-update (see Updates)
 /workspace/restore/
   config.env                                   your settings (not in git; created from config.env.example)
   README.md                                    this file
   restore.log, agent-restore.log               runner log, agent fallback output
-  state/                                       lock, boot id, hook stamps, baselines/, drift/ reports
+  state/                                       lock, boot id, hook stamps, baselines/, drift/ reports,
+                                               kit-version, kit-source, update-last-check, update-last-announced
   items/_template, 10-tailscale, 20-package-drift, 30-gh-auth
 /workspace/tailscale/                          bin/ (offline binaries), state/ (root-only), state-backup/, logs/, restore.log
 /workspace/config/gh/                          persistent gh login (optional)
@@ -43,6 +46,7 @@ Everything personal comes from one file, `/workspace/restore/config.env` (source
 | `WANT_SUFFIX` | no | MagicDNS suffix (`*.ts.net`); empty = not checked |
 | `WANT_IP` | no | expected Tailscale IP; empty = not checked. A mismatch is only reported, never treated as broken |
 | `GH_USER` | no | GitHub login gh should be signed in as; empty = any account (and the item passes if gh auth isn't set up) |
+| `UPDATE_MODE` | no | `auto` (default), `ask` or `off`; see [Updates](#updates) |
 
 Until `WANT_HOST` and `WANT_TAILNET` are set, `10-tailscale` reports NEEDS HUMAN. If you don't use Tailscale, disable the item:
 `touch /workspace/restore/items/10-tailscale/DISABLED`.
@@ -54,7 +58,10 @@ git clone https://github.com/heyalchang/grokbot-box-heal.git /workspace/src/grok
 cd /workspace/src/grokbot-box-heal && ./install.sh
 $EDITOR /workspace/restore/config.env
 ```
-`install.sh` is idempotent: re-run it after `git pull` to update. It copies scripts and items, creates `config.env` only if missing,
+Keep the clone where it is: the self-update works in it (install.sh remembers its path). `install.sh` is idempotent and
+non-interactive; re-running it after a `git pull` is the manual way to update. It copies scripts and items, creates `config.env` only if
+missing (an existing one is never overwritten; settings new in a version are appended with their defaults, marked "added by update"),
+records the installed version and commit,
 installs or replaces the `~/.bashrc` block between `# >>> box auto-restore >>>` and `# <<< box auto-restore <<<` (leaving the rest of
 the file alone; a backup goes to `state/`), and takes the first package baseline if none exists. It never runs a login.
 Options: `--no-hook`, `--no-baseline`. To try it in a scratch dir: `WORKSPACE=/tmp/x BASHRC=/tmp/x/bashrc ./install.sh`
@@ -136,6 +143,29 @@ Runs above the interactive guard, so `bash -ilc` (agents), SSH and login shells 
   background (after 5 s, so restore-all gets the lock first). On failure the stamp is back-dated so it retries in about 1 h.
 - Loop guard: `RESTORE_ACTIVE` / `TS_RESTORE_ACTIVE` (set by the runner) disable the hook in shells the runner spawns.
 
+## Updates
+`/workspace/bin/selfheal-update.sh [--caller NAME] [--apply] [--force-check]` keeps the kit current from its clone. It does real work at
+most once every 7 days (stamp `state/update-last-check`; `--force-check` skips that). The daily routine below calls it, so nothing else
+is needed. `UPDATE_MODE` in config.env picks what happens when `origin/main` has something newer than the installed commit:
+- **auto** (default): fast-forward the clone, re-run `install.sh`, then `restore-all.sh --caller update`. If the install fails or
+  restore-all exits 30, it resets the clone to the old commit, re-installs that, and reports the rollback.
+- **ask**: print "vNEW available: ..." once per version (`state/update-last-announced`), then stay quiet about that version.
+- **off**: never check; exits 0 silently.
+
+It only fast-forwards. A clone with uncommitted edits, not on `main`, or diverged from `origin/main` is left alone (exit 20).
+Output is one line; details go to `restore.log`. Update by hand, any mode: `/workspace/bin/selfheal-update.sh --apply --force-check`.
+
+| code | meaning | alert? |
+|---|---|---|
+| 0  | nothing to do: up to date, rate-limited, off, already announced, or busy | no |
+| 10 | updated: `updated vOLD -> vNEW: <changelog>` | FYI |
+| 11 | new version available (ask mode): `vNEW available: <changelog>` | FYI |
+| 20 | needs a human: uncommitted edits or diverged clone, fetch failed, or kit-source unknown | **yes** |
+| 30 | failed and rolled back: `update to vX failed, rolled back to vY` | **yes** |
+
+Installs from before 1.1.0 don't record their version: `git pull && ./install.sh` once in the clone. What changed in each version
+is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Suggested daily Grok Bot routine
 The hook only fires when some shell starts, so add one Grok Bot routine, once a day, as the backstop and alert path. Example prompt:
 
@@ -143,7 +173,9 @@ The hook only fires when some shell starts, so add one Grok Bot routine, once a 
 > `/workspace/restore/restore.log`. If `/workspace/restore/state/baseline-last-run` is older than 26 h, run
 > `/workspace/bin/restore-baseline-snapshot.sh --caller routine`. If the exit was 0, 10 or 75 and the log shows nothing new and
 > alarming, stay silent. If it was 20 or 30, message me with one short paragraph: which item, what the summary line says, and what I
-> need to do (for package drift, summarize the newest report in `/workspace/restore/state/drift/`). Never print secrets, never sign in
+> need to do (for package drift, summarize the newest report in `/workspace/restore/state/drift/`). Then run
+> `/workspace/bin/selfheal-update.sh --caller routine; echo "exit=$?"`: on 0 stay silent; on 10 or 11 pass its one line on to me; on 20
+> or 30 pass its line on and say I need to look. Never print secrets, never sign in
 > to anything, never relay a login link or code, never install or remove packages unless I ask.
 
 ## Adding an item
