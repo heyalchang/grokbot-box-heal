@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# 10-tailscale check: exit 0 only if tailscaled is up, Running, on WANT_TAILNET, as WANT_HOST, with Tailscale SSH on.
+# 10-tailscale check: exit 0 only if tailscaled is up, Running, on WANT_TAILNET, as WANT_HOST, with Tailscale SSH
+# matching TAILSCALE_SSH (on|off, default on).
 # Expected values come from $RESTORE_CONFIG (default $BOX_WORKSPACE/restore/config.env).
 # WANT_IP is informational only (a mismatch is shown, never fails the check). Read-only, no sudo, ~50 ms.
 export PATH=/usr/local/bin:/usr/bin:/bin
 CONF=${RESTORE_CONFIG:-${BOX_WORKSPACE:-/workspace}/restore/config.env}
-WANT_HOST="" WANT_TAILNET="" WANT_IP=""
+WANT_HOST="" WANT_TAILNET="" WANT_IP="" TAILSCALE_SSH="on"
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
+[ "$TAILSCALE_SSH" = off ] && want_ssh=off || want_ssh=on
 { [ -n "$WANT_HOST" ] && [ -n "$WANT_TAILNET" ]; } || { echo "not configured: set WANT_HOST and WANT_TAILNET in $CONF"; exit 1; }
 TS=/usr/local/bin/tailscale
 [ -x "$TS" ] || { echo "tailscale binary missing"; exit 1; }
@@ -16,6 +18,11 @@ read -r st tn host ip <<<"$(jq -r '[.BackendState, (.CurrentTailnet.Name // "-")
 [ "$st" = Running ] || { echo "BackendState=$st"; exit 1; }
 [ "$tn" = "$WANT_TAILNET" ] || { echo "wrong tailnet: $tn"; exit 1; }
 [ "$host" = "$WANT_HOST" ] || { echo "hostname=$host"; exit 1; }
-[ "$(timeout 10 "$TS" debug prefs 2>/dev/null | jq -r .RunSSH)" = true ] || { echo "Tailscale SSH off"; exit 1; }
+run_ssh=$(timeout 10 "$TS" debug prefs 2>/dev/null | jq -r .RunSSH)
+if [ "$want_ssh" = on ]; then
+  [ "$run_ssh" = true ] || { echo "Tailscale SSH off (TAILSCALE_SSH=on)"; exit 1; }
+else
+  [ "$run_ssh" != true ] || { echo "Tailscale SSH on (TAILSCALE_SSH=off)"; exit 1; }
+fi
 note=""; [ -n "$WANT_IP" ] && [ "$ip" != "$WANT_IP" ] && note=" (note: expected IP $WANT_IP)"
-echo "Running $tn $host $ip ssh=on$note"
+echo "Running $tn $host $ip ssh=$want_ssh$note"

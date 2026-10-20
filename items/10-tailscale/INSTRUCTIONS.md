@@ -6,10 +6,10 @@ The item check is `/workspace/restore/items/10-tailscale/check` (exit 0 = health
 
 The expected values live in `/workspace/restore/config.env` (read it; it holds no secrets):
 `WANT_HOST` (node hostname), `WANT_TAILNET` (tailnet / login name), optional `WANT_SUFFIX` (MagicDNS suffix) and
-optional `WANT_IP` (expected Tailscale IP; informational only).
+optional `WANT_IP` (expected Tailscale IP; informational only), and `TAILSCALE_SSH` (`on`, the default, or `off`).
 
 Your job is to get Tailscale on this box back to this state:
-**Running, node `$WANT_HOST`, tailnet `$WANT_TAILNET`, Tailscale SSH on** (and IP `$WANT_IP` if set).
+**Running, node `$WANT_HOST`, tailnet `$WANT_TAILNET`, Tailscale SSH as `TAILSCALE_SSH` says** (and IP `$WANT_IP` if set).
 Use the saved node state. Never do a fresh login. Never approve anything.
 
 ## Step 1: run the script (always do this first)
@@ -52,7 +52,8 @@ Check each item, fix what you find, then **re-run the script**. The script stays
 6. **Bring up.** Only if BackendState is `Stopped` (not `NeedsLogin`):
    `sudo timeout 45 tailscale up --ssh --hostname=$WANT_HOST --accept-dns=false --accept-routes=false --timeout=30s`.
    If the output mentions a login URL or "To authenticate", that is NEEDS LOGIN: stop and report, and don't relay the URL anywhere.
-   If it's Running but SSH is off: `sudo tailscale set --ssh`.
+   Use `--ssh` only if `TAILSCALE_SSH` is `on`; if it is `off`, use `--ssh=false` instead.
+   If it's Running but SSH doesn't match: `sudo tailscale set --ssh` (on) or `sudo tailscale set --ssh=false` (off).
 
 ## State backup (`/workspace/tailscale/state-backup/`)
 The real state dir is root-only (0700), so a computer update can drop it while box-owned files survive.
@@ -69,7 +70,7 @@ The script keeps a box-owned copy: dir 0700, files 0600, owned by the box user: 
 tailscale status --json | jq -c '{BackendState, tailnet:.CurrentTailnet.Name, host:.Self.HostName, ip:.Self.TailscaleIPs[0], online:.Self.Online}'
 tailscale debug prefs | jq -c '{RunSSH, Hostname}'
 ```
-Expected: `Running`, `$WANT_TAILNET`, `$WANT_HOST`, (`$WANT_IP` if set), `RunSSH: true`.
+Expected: `Running`, `$WANT_TAILNET`, `$WANT_HOST`, (`$WANT_IP` if set), `RunSSH: true` (or not true if `TAILSCALE_SSH=off`).
 Then `/workspace/restore/items/10-tailscale/check` must exit 0.
 
 ## Logging

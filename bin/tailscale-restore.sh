@@ -4,7 +4,7 @@
 # Keeps a box-owned copy of the root-only state dir in $TS_HOME/state-backup (refreshed only when
 # verified Running on the wanted tailnet and contents changed); restores it if the state file goes missing.
 # Settings come from $RESTORE_CONFIG (default $BOX_WORKSPACE/restore/config.env): WANT_HOST, WANT_TAILNET (required),
-# WANT_SUFFIX, WANT_IP (optional; empty = not checked).
+# WANT_SUFFIX, WANT_IP (optional; empty = not checked), TAILSCALE_SSH (on|off, default on).
 # Usage: tailscale-restore.sh [--first-run]
 #   --first-run  (human use, one time) allow starting tailscaled with an EMPTY state dir, so the owner can then sign in with
 #                `sudo tailscale up ...` themselves. Still never logs in; ends with exit 2 NEEDS LOGIN until someone signs in.
@@ -23,9 +23,11 @@ esac
 
 WS=${BOX_WORKSPACE:-/workspace}
 CONF=${RESTORE_CONFIG:-$WS/restore/config.env}
-WANT_HOST="" WANT_TAILNET="" WANT_SUFFIX="" WANT_IP=""
+WANT_HOST="" WANT_TAILNET="" WANT_SUFFIX="" WANT_IP="" TAILSCALE_SSH="on"
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
+# Tailscale SSH: anything but "off" means on. SSH_FLAG goes to tailscale up/set; WANT_RUNSSH is the expected RunSSH pref.
+if [ "$TAILSCALE_SSH" = off ]; then SSH_FLAG=--ssh=false WANT_RUNSSH=false; else SSH_FLAG=--ssh WANT_RUNSSH=true; fi
 
 TS_HOME=${TS_HOME:-$WS/tailscale}
 BACKUP_BIN=$TS_HOME/bin
@@ -39,7 +41,7 @@ BACKUP_DIR=$TS_HOME/state-backup          # box-owned copy of the root-only stat
 BACKUP_META=$BACKUP_DIR/.meta             # "source=Running ..." line; written only from a verified-healthy node
 BACKUP_ITEMS=(tailscaled.state ssh certs) # what in --statedir matters (missing ones are skipped)
 DAEMON_LOG=$TS_HOME/logs/tailscaled-$(date +%F).log
-UP_FLAGS=(--ssh "--hostname=$WANT_HOST" --accept-dns=false --accept-routes=false)
+UP_FLAGS=("$SSH_FLAG" "--hostname=$WANT_HOST" --accept-dns=false --accept-routes=false)
 
 TS="$INSTALL_DIR/tailscale"
 TSD="$INSTALL_DIR/tailscaled"
@@ -238,8 +240,9 @@ fi
 case "$S" in NeedsLogin|NeedsMachineAuth) warn_if_backup; die 2 "NEEDS LOGIN: BackendState=$S after up$FR_HINT" ;; esac
 [ "$S" = Running ] || die 6 "BackendState=$S after recovery attempts ($(summary))"
 
-if [ "$(run_ssh)" != true ] || [ "$(st_json | jq -r '.Self.HostName')" != "$WANT_HOST" ]; then
-  tsc set --ssh --hostname="$WANT_HOST" >/dev/null 2>&1 && log "ACTION: tailscale set --ssh --hostname=$WANT_HOST" || log "WARN: tailscale set --ssh failed"
+ssh_is() { [ "$(run_ssh)" = true ] && echo true || echo false; }   # RunSSH as true/false (unreadable = false)
+if [ "$(ssh_is)" != "$WANT_RUNSSH" ] || [ "$(st_json | jq -r '.Self.HostName')" != "$WANT_HOST" ]; then
+  tsc set "$SSH_FLAG" --hostname="$WANT_HOST" >/dev/null 2>&1 && log "ACTION: tailscale set $SSH_FLAG --hostname=$WANT_HOST" || log "WARN: tailscale set $SSH_FLAG failed"
   ACTIONS=$((ACTIONS + 1))
 fi
 

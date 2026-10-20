@@ -8,7 +8,7 @@ apt packages, running daemons, and root-only files (even under `/workspace`) do 
 
 - **10-tailscale**: reinstalls the Tailscale binaries (offline copy first, verified official tarball as fallback), recreates
   `/dev/net/tun` and the socket dir, restores the root-only node state from a box-owned backup, starts `tailscaled`, switches to the
-  right profile, and makes sure the hostname and Tailscale SSH are set. **It never logs in.** No usable state means NEEDS LOGIN.
+  right profile, and makes sure the hostname is set and Tailscale SSH matches `TAILSCALE_SSH`. **It never logs in.** No usable state means NEEDS LOGIN.
 - **20-package-drift** (alert-only): takes a daily snapshot of the dpkg package list and reports packages that went MISSING or
   appeared EXTRA compared to the newest baseline. It never installs or removes anything.
 - **30-gh-auth** (optional): keeps the GitHub CLI login in `/workspace/config/gh` (so it survives an update), re-links
@@ -45,6 +45,7 @@ Everything personal comes from one file, `/workspace/restore/config.env` (source
 | `WANT_TAILNET` | yes (10-tailscale) | tailnet name, i.e. `tailscale status --json \| jq -r .CurrentTailnet.Name` (usually your login name for a personal tailnet) |
 | `WANT_SUFFIX` | no | MagicDNS suffix (`*.ts.net`); empty = not checked |
 | `WANT_IP` | no | expected Tailscale IP; empty = not checked. A mismatch is only reported, never treated as broken |
+| `TAILSCALE_SSH` | no | `on` (default) or `off`: whether other devices on your tailnet can SSH into this box via Tailscale SSH |
 | `GH_USER` | no | GitHub login gh should be signed in as; empty = any account (and the item passes if gh auth isn't set up) |
 | `UPDATE_MODE` | no | `auto` (default), `ask` or `off`; see [Updates](#updates) |
 
@@ -77,7 +78,7 @@ These need a person. Agents must never do them, and must never relay a login lin
 ```bash
 . /workspace/restore/config.env
 /workspace/bin/tailscale-restore.sh --first-run; echo "exit=$?"   # installs binaries, starts tailscaled with an empty state; exits 2
-sudo tailscale up --ssh --hostname="$WANT_HOST" --accept-dns=false --accept-routes=false
+sudo tailscale up --ssh --hostname="$WANT_HOST" --accept-dns=false --accept-routes=false   # --ssh only if TAILSCALE_SSH=on (the default); drop it if off
 #   -> open the sign-in link it prints in YOUR browser and approve the node
 /workspace/bin/tailscale-restore.sh; echo "exit=$?"               # expect 0; this also writes the first state backup
 /workspace/restore/items/10-tailscale/check
