@@ -194,7 +194,7 @@ unless they share a name with a kit item.
 
 ## Rules every item follows
 Never print, log, or copy keys, tokens, passwords, login links, or state/credential contents. No fresh logins and no minting
-credentials. Keep durable copies in `/workspace`. More background: [docs/box-self-heal.md](docs/box-self-heal.md).
+credentials. Keep durable copies in `/workspace`.
 
 ## License
 MIT, see [LICENSE](LICENSE).
