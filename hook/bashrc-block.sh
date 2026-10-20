@@ -1,5 +1,5 @@
 # >>> box auto-restore >>>
-# Self-heal trigger, scripts only (see @WS@/restore/README.md). Managed by grokbot-box-restore install.sh; edits here are
+# Self-heal trigger, scripts only (see @WS@/restore/README.md). Managed by grokbot-box-selfheal install.sh; edits here are
 # replaced on the next install. Sits above the interactive guard so login, agent (`bash -ilc`) and SSH shells all run it.
 # Silent; costs ~1 ms when the stamp is fresh. At most once per 15 min (stamp hook-last-run, which holds the boot id):
 # check Tailscale is Running+Online; launch restore-all.sh if not, or at once on a new boot. Daily baseline if >24h old.
