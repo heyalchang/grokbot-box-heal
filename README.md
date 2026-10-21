@@ -76,7 +76,7 @@ Re-installing re-copies kit files but never deletes your own items, jobs, or `DI
 ## One-time steps
 Once per box. An agent working under the owner's direction can do all of this and hand the owner the sign-in link or one-time code to approve in a browser; that is usually the safer path. The unattended rules still hold: the daily routine and the items never log in, never mint credentials, and never print or relay a link or code on their own.
 
-**Offline Tailscale binaries** (`/workspace/tailscale/bin/`; the kit never downloads them on its own): Download the official static tarball from `https://pkgs.tailscale.com/stable/` for the box's architecture, verify its `.sha256` checksum, and put `tailscale` and `tailscaled` into `/workspace/tailscale/bin/` (`chmod 0755`).
+**Offline Tailscale binaries** (`/workspace/tailscale/bin/`; the kit never downloads them on its own): `install.sh` seeds them automatically by copying a working `tailscale` and `tailscaled` that are already installed (`/usr/local/bin` or on `PATH`). Only if Tailscale isn't installed yet: download the official static tarball from `https://pkgs.tailscale.com/stable/` for the box's architecture, verify its `.sha256` checksum, and put `tailscale` and `tailscaled` into `/workspace/tailscale/bin/` (`chmod 0755`).
 
 **Tailscale sign-in** (once per node; afterwards the state backup carries it across updates):
 
