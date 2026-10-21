@@ -196,9 +196,36 @@ Env given to `check`/`restore`/`run`: `ITEM_NAME`/`JOB_NAME`, `ITEM_DIR`/`JOB_DI
 `RESTORE_ACTIVE=1`. Read your own settings from `$RESTORE_CONFIG`. Items and jobs you add are never touched by `install.sh`
 unless they share a name with a kit one.
 
-## Rules every item follows
-Never print, log, or copy keys, tokens, passwords, login links, or state/credential contents. No fresh logins and no minting
-credentials. Keep durable copies in `/workspace`.
+## Platform quirks, the Restore bot, and design invariants (read before changing the kit)
+
+### How this kit and the Restore Grok Bot fit together
+- **Tools vs. agent:** This repo is **only the local shell toolkit** installed on the VM. Separately, a Grok Bot agent (**Restore**) runs the daily health routine and helps the owner inspect drift/alerts or review and apply kit updates when asked.
+- **One-way boundary (by design):** The VM **never** webhooks back into Grok Bot land, **never** spawns headless LLM agents from inside the runner, and **never** self-updates or downloads binaries on its own. Scripts check, restore from local `/workspace` copies, and write to `restore/restore.log`; the Restore bot (or the owner) reads the log and decides what to do next.
+
+### 1. Platform quirks (why this kit exists)
+- **What a "Computer Update" wipes vs. keeps:** User-owned files under `/workspace` survive. Everything outside `/workspace` (`/usr/local/bin`, `/etc`, apt packages), all running daemons, and **root-only files even inside `/workspace`** (such as `/workspace/tailscale/state/`) do not survive. `~/.bashrc` may also be reset.
+- **No init, no cron:** PID 1 is `tini`. Nothing starts on a fresh instance until some shell opens.
+- **Idle VM pause + silent TCP drop:** The platform pauses the VM while idle. Outbound TCP goes through a host-side transparent proxy that silently drops idle flows across a pause without sending an RST. On resume, `tailscaled` sits on dead sockets for ~15 min (`tcp_retries2=15`) while `BackendState` still reports `Running` and `Self.Online` lags by minutes. Aborting stuck `tailscaled` sockets (`ss -K`) forces an immediate redial without restarting the daemon.
+- **Shared trust boundary:** One Linux user (`box`) with passwordless `sudo -n` is shared by every bot on the VM.
+
+### 2. Hard invariants (do not "improve" these away)
+- **Hook while active, daily routine as backstop — no background cron daemon:** `restore-all.sh` is triggered **only** by `bin/restore-hook.sh` when a shell starts (at most once per 15 min) and by the once-a-day Grok Bot routine. Do **not** make the Tailscale watchdog call `restore-all.sh`: that turns the watchdog into an unattended 24/7 cron daemon, hits GitHub (`250-gh-auth`) 96 times a day with nobody watching, and couples the watchdog to the runner lock.
+- **The Tailscale watchdog does one job:** Every `WATCHDOG_INTERVAL` seconds, abort stuck TCP sockets after a VM pause, or run `timeout 300 tailscale-restore.sh` if `tailscaled` has been down/non-`Running` for 2+ ticks.
+  - **Socket aborts on a `Running` node that recover (`rc=0`) do not count toward the 6/hour cap** — pausing every 15 min is normal life on this VM.
+  - **Failed actions (`rc != 0`) and daemon restarts (`why` contains `state=`) do count** in `state/ts-watchdog.fails`, so a crash-looping `tailscaled` stops after 6 in an hour, writes `state/ts-watchdog.capped` (removing `ts-watchdog.fails`), and raises `NEEDS HUMAN`.
+  - **`NeedsLogin`, `NeedsMachineAuth`, and `Stopped` are hands-off:** Never trigger or count socket aborts or restarts in those states (a human ran `tailscale down` or has not signed in).
+- **Heal items (`items/`) vs. periodic jobs (`jobs/`):**
+  - `items/NNN-name` (`check` → `restore` → `check`, under `.restore-all.lock`) are fast state assertions checked every 15 min while active.
+  - `jobs/NNN-name` (`INTERVAL` + `run`, under `.restore-jobs.lock` **after** `.restore-all.lock` is released) are periodic tasks (like the 24 h dpkg baseline). Releasing `.restore-all.lock` before the job pass lets a job call a script that takes `.restore-all.lock` without passing lock-bypass env vars across processes.
+- **Detached children must never inherit locks or loop-guard env vars:** When `restore` launches `watchdog` or the hook launches `restore-all.sh`, close extra fds (`3..9`) and explicitly set or clear `RESTORE_ACTIVE`. Never use an inherited env var to bypass `flock`.
+- **No unattended self-update, no binary downloads, no headless agent fallback, no interactive logins, no secrets in output:**
+  - The kit runs as root next to Tailscale; updates are reviewed first and run deliberately (`git pull && ./install.sh`), never via an unattended job.
+  - Tailscale binaries come only from the offline copy in `/workspace/tailscale/bin/`.
+  - Never print, log, or copy keys, tokens, passwords, login links, or state/credential contents. No fresh logins and no minting credentials. Keep durable copies in `/workspace`.
+- **One journal (`restore/restore.log`) and two exit-code tables:**
+  - All kit actions log to `/workspace/restore/restore.log` with a bracketed component tag (rotated at 1 MB by the runner under its lock). `tailscale/logs/ts-watch.log` is the per-tick trace.
+  - Runner (`restore-all.sh`) exits: `0` ok · `10` restored/did work · `20` NEEDS HUMAN · `30` FAILED · `75` busy.
+  - Everything the runner calls shares one table: `0` ok · `2` needs human · `10` did work (jobs only) · `75` busy (skip without stamping) · anything else = failed.
 
 ## License
 MIT, see [LICENSE](LICENSE).
