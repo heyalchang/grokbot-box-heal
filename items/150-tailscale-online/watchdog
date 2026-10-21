@@ -7,17 +7,19 @@
 #  - acts (runs `restore --now`) when a tailscaled socket is STUCK (unacked>0 and backoff>=3, or backoff>=2 and silent >=20 s;
 #    socket-level, independent of the tick), or when tailscaled is down / not Running+Online on 2 ticks in a row (NeedsLogin and
 #    NeedsMachineAuth are ignored so an unauthenticated node never burns the action cap). At most one action per MIN_GAP (60 s).
-#  - cap: MAX_ACTIONS (6) *failed* actions (restore --now exited non-zero: still offline afterwards) per rolling hour. An action
-#    that brings the node back online does not count: a box that freezes every 15 min and recovers every time keeps working.
-#    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (item 150's check then fails -> runner/daily
-#    routine alert) and only logs. Re-arm: remove the flag, pkill this loop, run restore-all (a fresh loop has a clean count).
+#  - cap: MAX_ACTIONS (6) *failed* actions (restore --now exited non-zero: still offline afterwards) per rolling hour, tracked in
+#    $WS/restore/state/ts-watchdog.fails (one epoch per line). An action that brings the node back online does not count: a box
+#    that freezes every 15 min and recovers every time keeps working. Past the cap it stops acting, writes
+#    $WS/restore/state/ts-watchdog.capped (item 150's check then fails -> runner/daily routine alert) and only logs.
+#    To re-arm, remove both ts-watchdog.capped and ts-watchdog.fails (no pkill or restart needed).
 #  - kill switch: $HERE/DISABLED is checked every tick and before every action; the loop exits within one tick.
 #    For an immediate stop also run: pkill -f items/150-tailscale-online/watchdog
 #  - log: rotates at 5 MB to ts-watch.log.1 (max ~10 MB on disk; ~0.35 MB/day at a 60 s tick).
 # Usage: watchdog | watchdog --running (exit 0 if a copy runs)
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 WS=${BOX_WORKSPACE:-/workspace}; HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-LOCK=$WS/restore/state/ts-watchdog.lock; OUT=$WS/tailscale/logs/ts-watch.log; CAPFLAG=$WS/restore/state/ts-watchdog.capped
+LOCK=$WS/restore/state/ts-watchdog.lock; OUT=$WS/tailscale/logs/ts-watch.log
+CAPFLAG=$WS/restore/state/ts-watchdog.capped; FAILFILE=$WS/restore/state/ts-watchdog.fails
 MIN_GAP=60 MAX_ACTIONS=6 MAX_LOG=5242880 JUMP_SLACK=30
 if [ "${1:-}" = --running ]; then exec 9>>"$LOCK"; flock -n 9 && exit 1 || exit 0; fi
 mkdir -p "$(dirname "$OUT")" "$WS/restore/state"
@@ -32,7 +34,7 @@ export RESTORE_ACTIVE=1
 TS=/usr/local/bin/tailscale
 say() { echo "$(date '+%F %T %Z') $*" >>"$OUT"; }
 up() { read -r u _ </proc/uptime; echo "${u%.*}"; }
-pw=$(date +%s); pu=$(up); off=0; last_act=0; fails=()
+pw=$(date +%s); pu=$(up); off=0; last_act=0
 say "start pid=$$ interval=${INT}s jump>=$((INT + JUMP_SLACK))s min_gap=${MIN_GAP}s cap=${MAX_ACTIONS} failed/h"
 while :; do
   sleep "$INT" 9>&-   # 9>&-: children must not inherit the lock fd
@@ -63,22 +65,30 @@ while :; do
     else why="${why:+$why, }state=${st:-down} $((off * INT))s"; fi
   fi
   if [ -n "$why" ] && [ $((w - last_act)) -ge "$MIN_GAP" ]; then
-    # rolling 1 h window of FAILED actions
-    keep=(); for t in "${fails[@]}"; do [ $((w - t)) -lt 3600 ] && keep+=("$t"); done; fails=("${keep[@]}")
-    if [ "${#fails[@]}" -ge "$MAX_ACTIONS" ] || [ -e "$CAPFLAG" ]; then
+    # rolling 1 h window of FAILED actions in $FAILFILE (one epoch per line)
+    keep=()
+    if [ -r "$FAILFILE" ]; then
+      while read -r t _; do
+        case $t in ''|*[!0-9]*) ;; *) [ $((w - t)) -lt 3600 ] && keep+=("$t") ;; esac
+      done <"$FAILFILE"
+    fi
+    if [ "${#keep[@]}" -ge "$MAX_ACTIONS" ] || [ -e "$CAPFLAG" ]; then
+      if [ "${#keep[@]}" -gt 0 ]; then printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"; else rm -f "$FAILFILE"; fi
       if [ ! -e "$CAPFLAG" ]; then
-        echo "${#fails[@]} failed actions within 1h, last at $(date '+%F %T %Z')" >"$CAPFLAG"
-        say "CAP REACHED (${#fails[@]} failed actions/h): NOT acting any more; NEEDS HUMAN. Remove $CAPFLAG to re-arm."
+        echo "${#keep[@]} failed actions within 1h, last at $(date '+%F %T %Z')" >"$CAPFLAG"
+        say "CAP REACHED (${#keep[@]} failed actions/h): NOT acting any more; NEEDS HUMAN. Remove $CAPFLAG and $FAILFILE to re-arm."
         printf '%s [ts-watchdog] NEEDS HUMAN: action cap reached (%s failed/h); stopped acting (%s)\n' "$(date '+%F %T %Z')" "$MAX_ACTIONS" "$CAPFLAG" >>"$WS/tailscale/restore.log"
       fi
     elif [ ! -e "$HERE/DISABLED" ]; then
       last_act=$w
       RESTORE_CALLER=watchdog BOX_WORKSPACE=$WS "$HERE/restore" --now 9>&-; rc=$?
       if [ "$rc" -eq 0 ]; then
-        say "ACTION ($why): restore --now rc=0, recovered (failed actions in the last hour: ${#fails[@]}/$MAX_ACTIONS)"
+        if [ "${#keep[@]}" -gt 0 ]; then printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"; else rm -f "$FAILFILE"; fi
+        say "ACTION ($why): restore --now rc=0, recovered (failed actions in the last hour: ${#keep[@]}/$MAX_ACTIONS)"
       else
-        fails+=("$w")
-        say "ACTION ($why): restore --now rc=$rc, FAILED (${#fails[@]}/$MAX_ACTIONS failed actions in the last hour)"
+        keep+=("$w")
+        printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"
+        say "ACTION ($why): restore --now rc=$rc, FAILED (${#keep[@]}/$MAX_ACTIONS failed actions in the last hour)"
       fi
     fi
   fi

@@ -66,7 +66,8 @@ for d in "$HERE"/jobs/*/; do
   mkdir -p "$dest"
   for f in "$d"* ; do [ -f "$f" ] && cp -p "$f" "$dest/"; done
 done
-rm -f "$WS/restore/state/baseline-last-run" "$WS/restore/state/update-last-check"
+rm -f "$WS"/restore/state/agent-last-run.* "$WS/restore/agent-restore.log" \
+      "$WS/restore/state/baseline-last-run" "$WS/restore/state/update-last-check"
 install -m 0644 "$HERE/README.md" "$WS/restore/README.md"
 VER=$(tr -d ' \t\r\n' <"$HERE/VERSION" 2>/dev/null); VER=${VER:-unknown}
 if [ -e "$WS/restore/config.env" ]; then
@@ -119,9 +120,9 @@ fi
 if [ "$DO_BASELINE" = 1 ] && command -v dpkg-query >/dev/null 2>&1 \
    && ! ls "$WS"/restore/state/baselines/packages-*.txt >/dev/null 2>&1; then
   if BOX_WORKSPACE=$WS "$WS/bin/restore-baseline-snapshot.sh" --caller install; then
-    printf '%s 0 initial baseline\n' "$(date +%s)" >"$WS/restore/state/job-last-run.100-baseline-snapshot"
+    printf '%s 0 initial baseline\n' "$(date +%s)" >"$WS/restore/state/job-last-run.400-baseline-snapshot"
   else
-    echo "warning: first package baseline failed; job 100-baseline-snapshot retries later" >&2
+    echo "warning: first package baseline failed; job 400-baseline-snapshot retries later" >&2
   fi
 fi
 
@@ -135,5 +136,5 @@ cat <<NEXT
 Done. Next steps (see README.md):
   1. Edit $WS/restore/config.env.
   2. One time, as a human: Tailscale sign-in (README "One-time human steps"); optionally the gh device login.
-  3. Test: BOX_WORKSPACE=$WS $WS/bin/restore-all.sh --no-agent; echo "exit=\$?"
+  3. Test: BOX_WORKSPACE=$WS $WS/bin/restore-all.sh; echo "exit=\$?"
 NEXT

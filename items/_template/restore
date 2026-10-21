@@ -6,7 +6,7 @@
 #   0   restored (the runner re-runs check to confirm)
 #   2   NEEDS HUMAN (e.g. needs an interactive login/approval) -> no agent fallback, runner alerts
 #   75  temporarily busy (e.g. a lock held) -> skipped this round
-#   any other nonzero = failed -> runner invokes the Grok agent with INSTRUCTIONS.md (rate-limited)
+#   any other nonzero = failed, the runner alerts
 # Env provided by the runner: ITEM_NAME, ITEM_DIR, RESTORE_CALLER, RESTORE_LOG.
 #
 # Example:

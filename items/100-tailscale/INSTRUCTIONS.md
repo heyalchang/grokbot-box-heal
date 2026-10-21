@@ -1,4 +1,4 @@
-# 100-tailscale: instructions for the agent fallback
+# 100-tailscale: runbook (for a person or the daily agent)
 
 This is item `100-tailscale` of the general restore runner (`/workspace/bin/restore-all.sh`, see /workspace/restore/README.md).
 The item check is `/workspace/restore/items/100-tailscale/check` (exit 0 = healthy). The item restore wraps the script below.
@@ -14,24 +14,24 @@ Use the saved node state. Never do a fresh login. Never approve anything.
 
 ## Step 1: run the script (always do this first)
 ```bash
-TS_RESTORE_CALLER=agent /workspace/bin/tailscale-restore.sh; echo "exit=$?"
+TS_RESTORE_CALLER=manual /workspace/bin/tailscale-restore.sh; echo "exit=$?"
 tail -n 20 /workspace/tailscale/restore.log
 ```
 Exit codes:
 - `0`: healthy or restored. Run the Verify step, report, and stop.
-- `2`: **NEEDS LOGIN** (or config.env not filled in). Stop here. Do not run `tailscale login`, and do not run `tailscale up`
-  in a way that opens or prints a login URL. Do not create auth keys. Log it (see Logging) and report that the box owner has to
-  sign in themselves.
+- `2`: **NEEDS LOGIN** (or config.env not filled in, or offline binaries missing in `/workspace/tailscale/bin`). Stop here. Do not
+  run `tailscale login`, and do not run `tailscale up` in a way that opens or prints a login URL. Do not create auth keys. Log it
+  (see Logging) and report that the box owner has to handle it themselves.
 - `75`: another restore holds the lock. Wait 30 s and run the script once more.
-- `3`: no passwordless sudo. `4`: binaries unavailable. `5`: tailscaled won't start. `6`: still unhealthy. For any of these, go to Step 2.
+- `3`: no passwordless sudo. `4`: binary install failed. `5`: tailscaled won't start. `6`: still unhealthy. For any of these, go to Step 2.
 
 ## Step 2: troubleshoot (only if the script failed with 3/4/5/6)
 Check each item, fix what you find, then **re-run the script**. The script stays the tool that does the real work.
 1. **Binaries.** `ls -la /usr/local/bin/tailscale /usr/local/bin/tailscaled /workspace/tailscale/bin/`.
    Reinstall offline from the backup:
    `sudo install -m 0755 /workspace/tailscale/bin/tailscale /workspace/tailscale/bin/tailscaled /usr/local/bin/`.
-   Download only if the backup is missing. The script itself does that: it fetches the official static tarball from
-   pkgs.tailscale.com, verifies its sha256, and saves the binaries into /workspace/tailscale/bin.
+   If the backup in `/workspace/tailscale/bin/` is missing or broken, stop and report NEEDS HUMAN (the box owner copies verified
+   `tailscale` and `tailscaled` binaries into `/workspace/tailscale/bin/` by hand; never download them on the box).
 2. **Dirs/devices.** `sudo mkdir -p /var/run/tailscale`. `/dev/net/tun` must be a char device 10,200:
    `sudo mkdir -p /dev/net && sudo mknod /dev/net/tun c 10 200 && sudo chmod 0666 /dev/net/tun`.
 3. **Saved state.** It must exist and be non-empty: `sudo test -s /workspace/tailscale/state/tailscaled.state && echo present`.
@@ -76,7 +76,7 @@ Then `/workspace/restore/items/100-tailscale/check` must exit 0.
 ## Logging
 Append one timestamped line per action you take, and one final result line, to `/workspace/tailscale/restore.log`
 (the Tailscale script's own log) **and** `/workspace/restore/restore.log` (the runner's log), e.g.
-`echo "$(date '+%F %T %Z') [agent] <what you did / result>" >> /workspace/tailscale/restore.log`.
+`echo "$(date '+%F %T %Z') [100-tailscale] <what you did / result>" >> /workspace/tailscale/restore.log`.
 If you hit a login wall, the final line must contain `NEEDS LOGIN` (the runner treats that as NEEDS HUMAN).
 
 ## Hard rules

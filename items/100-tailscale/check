@@ -5,7 +5,7 @@
 # WANT_IP is informational only (a mismatch is shown, never fails the check). Read-only, no sudo, ~50 ms.
 export PATH=/usr/local/bin:/usr/bin:/bin
 CONF=${RESTORE_CONFIG:-${BOX_WORKSPACE:-/workspace}/restore/config.env}
-WANT_HOST="" WANT_TAILNET="" WANT_IP="" TAILSCALE_SSH="on"
+WANT_HOST="" WANT_TAILNET="" WANT_SUFFIX="" WANT_IP="" TAILSCALE_SSH="on"
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
 [ "$TAILSCALE_SSH" = off ] && want_ssh=off || want_ssh=on

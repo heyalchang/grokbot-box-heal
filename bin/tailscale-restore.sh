@@ -156,22 +156,7 @@ if ! bin_ok "$TS" || ! [ -x "$TSD" ] || ! "$TSD" --version >/dev/null 2>&1; then
       || die 4 "install from $BACKUP_BIN failed"
     log "ACTION: installed tailscale+tailscaled $("$TS" version | head -1) into $INSTALL_DIR from backup (offline)"
   else
-    log "backup binaries missing/broken in $BACKUP_BIN; falling back to official static tarball"
-    tmp=$(mktemp -d) || die 4 "mktemp failed"
-    (
-      set -e; cd "$tmp"
-      case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; armv7l) ARCH=arm ;; i?86) ARCH=386 ;; *) exit 1 ;; esac
-      VER=$(curl -fsSL "https://pkgs.tailscale.com/stable/?mode=json" | jq -r .TarballsVersion)
-      curl -fsSL -o "ts_${VER}.tgz" "https://pkgs.tailscale.com/stable/tailscale_${VER}_${ARCH}.tgz"
-      echo "$(curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${VER}_${ARCH}.tgz.sha256")  ts_${VER}.tgz" | sha256sum -c - >/dev/null
-      tar xzf "ts_${VER}.tgz"
-      mkdir -p "$BACKUP_BIN"
-      install -m 0755 "tailscale_${VER}_${ARCH}/tailscale" "tailscale_${VER}_${ARCH}/tailscaled" "$BACKUP_BIN/"
-    ) || { rm -rf "$tmp"; die 4 "tarball download/verify failed"; }
-    rm -rf "$tmp"
-    "${SUDO[@]}" install -m 0755 "$BACKUP_BIN/tailscale" "$BACKUP_BIN/tailscaled" "$INSTALL_DIR/" \
-      || die 4 "install after download failed"
-    log "ACTION: downloaded+verified $("$TS" version | head -1), saved to $BACKUP_BIN, installed into $INSTALL_DIR"
+    die 2 "NEEDS HUMAN: offline tailscale binaries missing or broken in $BACKUP_BIN; copy tailscale and tailscaled in by hand (README)"
   fi
   ACTIONS=$((ACTIONS + 1))
 fi

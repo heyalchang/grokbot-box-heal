@@ -2,7 +2,7 @@
 # 050-hostname restore: set the Linux hostname to WANT_OS_HOSTNAME (root files reset on a computer update).
 # Order: /etc/hosts first (so sudo resolves the new name), then hostname(1), then /etc/hostname, then repoint Chrome
 # SingletonLocks written under another hostname to the new one (same pid) so box-chrome can still hand launches to running
-# browsers and cold launches aren't refused. Never kills a browser. Exit 0 done | 1 failed (NO_AGENT: runner alerts).
+# browsers and cold launches aren't refused. Never kills a browser. Exit 0 done | 1 failed (the runner alerts).
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 LOG=${RESTORE_LOG:-${BOX_WORKSPACE:-/workspace}/restore/restore.log}
