@@ -10,6 +10,7 @@
 #  - records the kit version + commit in state/kit-version and this clone's path in state/kit-source
 #  - installs/updates the ~/.bashrc hook between "# >>> box auto-restore >>>" and "# <<< box auto-restore <<<"
 #    (replaces that block if present, otherwise prepends it; everything else in the file is left alone)
+#  - seeds missing offline Tailscale binaries ($TS_HOME/bin) from an existing install; never downloads them
 #  - takes the first package baseline if none exists (dpkg-query only)
 # It never runs a login, never starts tailscaled, and never runs restore-all. Non-interactive.
 #
@@ -26,7 +27,7 @@ while [ $# -gt 0 ]; do
     --no-hook) DO_HOOK=0 ;;
     --no-baseline) DO_BASELINE=0 ;;
     --hook-only) HOOK_ONLY=1 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 64 ;;
   esac
   shift
@@ -89,6 +90,18 @@ else
   install -m 0644 "$HERE/config.env.example" "$WS/restore/config.env"
   echo "created $WS/restore/config.env from the example: edit it (WANT_HOST, WANT_TAILNET, optional WANT_SUFFIX/WANT_IP/GH_USER)"
 fi
+# offline Tailscale binaries for 100-tailscale: copy missing ones from an installed, working Tailscale (never downloads)
+TS_BIN=${TS_HOME:-$WS/tailscale}/bin
+for b in tailscale tailscaled; do
+  [ -x "$TS_BIN/$b" ] && continue
+  src=/usr/local/bin/$b; [ -x "$src" ] || src=$(command -v "$b" 2>/dev/null || true)
+  if [ -n "$src" ] && "$src" --version >/dev/null 2>&1 && mkdir -p "$TS_BIN" && install -m 0755 "$src" "$TS_BIN/$b" \
+     && "$TS_BIN/$b" --version >/dev/null 2>&1; then
+    echo "seeded offline $b $("$TS_BIN/$b" --version | head -1) into $TS_BIN from $src"
+  else
+    rm -f "$TS_BIN/$b"; echo "offline $b missing in $TS_BIN and no working install to copy; see README \"One-time steps\""
+  fi
+done
 fi   # HOOK_ONLY
 
 if [ "$DO_HOOK" = 1 ]; then
