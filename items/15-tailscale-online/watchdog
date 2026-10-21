@@ -9,7 +9,7 @@
 #  - cap: MAX_ACTIONS (6) *failed* actions (restore --now exited non-zero: still offline afterwards) per rolling hour. An action
 #    that brings the node back online does not count: a box that freezes every 15 min and recovers every time keeps working.
 #    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (item 15's check then fails -> runner/daily
-#    routine alert) and only logs. Remove the flag to re-arm.
+#    routine alert) and only logs. Re-arm: remove the flag, pkill this loop, run restore-all (a fresh loop has a clean count).
 #  - kill switch: $HERE/DISABLED is checked every tick and before every action; the loop exits within one tick.
 #    For an immediate stop also run: pkill -f items/15-tailscale-online/watchdog
 #  - log: rotates at 5 MB to ts-watch.log.1 (max ~10 MB on disk; ~0.35 MB/day at a 60 s tick).

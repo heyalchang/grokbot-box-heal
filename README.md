@@ -61,8 +61,8 @@ Everything personal comes from one file, `/workspace/restore/config.env` (source
 | `WANT_OS_HOSTNAME` | no | Linux hostname item 05 keeps; empty = not managed |
 | `WATCHDOG_INTERVAL` | yes (15-tailscale-online) | watchdog tick in seconds, 30..600 (60 in the example). Missing or malformed: the watchdog refuses to start and item 15 fails |
 
-Until `WANT_HOST` and `WANT_TAILNET` are set, `10-tailscale` reports NEEDS HUMAN. If you don't use Tailscale, disable the item:
-`touch /workspace/restore/items/10-tailscale/DISABLED`.
+Until `WANT_HOST` and `WANT_TAILNET` are set, `10-tailscale` reports NEEDS HUMAN. If you don't use Tailscale, disable both Tailscale items:
+`touch /workspace/restore/items/{10-tailscale,15-tailscale-online}/DISABLED` (item 15 would otherwise start its watchdog loop).
 
 ## Install
 Requirements: bash 5, `jq`, `flock`, `timeout`, `setsid`, `ss` (iproute2), passwordless `sudo -n`, and `curl` (only for the tarball fallback).

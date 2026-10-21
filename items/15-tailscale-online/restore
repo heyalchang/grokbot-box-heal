@@ -43,6 +43,7 @@ if [ ! -e "$HERE/DISABLED" ] && ! "$HERE/watchdog" --running; then
   if "$HERE/watchdog" --running; then log "ACTION: started ts-watchdog"; else log "FAIL: ts-watchdog did not start (last line of $WS/tailscale/logs/ts-watch.log says why)"; rc=1; fi
 fi
 pgrep -x tailscaled >/dev/null || exit $rc            # not running: 10-tailscale's job
+[ "$(timeout 10 sudo -n "$TS" status --json 2>/dev/null | jq -r .BackendState 2>/dev/null)" = Running ] || exit $rc   # NeedsLogin etc.: 10-tailscale's job; never abort a login connection
 command -v ss >/dev/null || { log "FAIL: ss (iproute2) missing"; exit 1; }
 # 2. stuck sockets: abort regardless of Online (Online lags)
 n=$(abort stuck)
