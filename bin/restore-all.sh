@@ -51,6 +51,7 @@ oneline() { tr '\n' ' ' | sed -E 's#https?://[^ ]+#<url>#g; s/  +/ /g; s/ +$//' 
 exec 7>>"$STATE/.restore-all.lock"
 if [ "$CALLER" = bashrc ]; then W=0; else W=${RESTORE_LOCK_WAIT:-120}; fi
 if ! flock -w "$W" 7; then log "another restore-all run holds the lock; skipping"; [ "$QUIET" = 1 ] || echo "restore-all: busy (another run in progress)"; exit 75; fi
+[ "$(stat -c %s "$RESTORE_LOG" 2>/dev/null || echo 0)" -gt 1048576 ] && mv -f "$RESTORE_LOG" "$RESTORE_LOG.1"   # rotate at 1 MB, one old copy; under the lock so no other run's line counts shift
 
 WORST=0
 bump() { [ "$1" -gt "$WORST" ] && WORST=$1; return 0; }

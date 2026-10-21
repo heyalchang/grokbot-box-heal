@@ -6,16 +6,24 @@ A platform "Update Bot's Computer" can move the box to a fresh instance. Box-own
 apt packages, running daemons, and root-only files (even under `/workspace`) do not. There is no cron and no systemd (PID 1 is
 `tini`), so nothing runs on a fresh instance until some shell starts. This kit notices that and puts things back, with plain scripts:
 
+- **05-hostname** (optional): keeps the Linux hostname at `WANT_OS_HOSTNAME` after a computer update (`/etc/hosts`, `hostname`,
+  `/etc/hostname`) and repoints Chrome profile locks written under the old name. Empty setting = off.
 - **10-tailscale**: reinstalls the Tailscale binaries (offline copy first, verified official tarball as fallback), recreates
   `/dev/net/tun` and the socket dir, restores the root-only node state from a box-owned backup, starts `tailscaled`, switches to the
   right profile, and makes sure the hostname is set and Tailscale SSH matches `TAILSCALE_SSH`. **It never logs in.** No usable state means NEEDS LOGIN.
+- **15-tailscale-online**: fails when the node is `Running` but `Self.Online=false` (a dead control session, which item 10 can't
+  see) and unsticks it by aborting tailscaled's stuck TCP sockets with `ss -K`. The box VM is paused while idle and a host-side
+  proxy drops those flows silently; without this the node is off the tailnet for ~15 min after every pause. It also runs the
+  **watchdog**, a 60 s loop that does the same between runner runs (one copy, capped, `DISABLED` file to stop it).
 - **20-package-drift** (alert-only): takes a daily snapshot of the dpkg package list and reports packages that went MISSING or
   appeared EXTRA compared to the newest baseline. It never installs or removes anything.
 - **30-gh-auth** (optional): keeps the GitHub CLI login in `/workspace/config/gh` (so it survives an update), re-links
   `~/.config/gh` to it and re-runs `gh auth setup-git`. **It never logs in.**
+- **35-bashrc-hook**: puts the `~/.bashrc` hook back if a computer update reset the file (`install.sh --hook-only`).
 - A **runner** (`restore-all.sh`) walks the items in order: `check`, then `restore`, then `check` again, and (only for items that
   allow it) a rate-limited headless Grok agent fallback that follows the item's `INSTRUCTIONS.md`.
-- A **`~/.bashrc` hook** that triggers the runner from any shell (agent, SSH, login), cheaply and rate-limited.
+- A **`~/.bashrc` hook** that launches the runner from any shell (agent, SSH, login) at most once per 15 minutes, with no fork
+  in between. The runner is the box's only scheduler: while agents are working, every item is checked every 15 minutes.
 - An optional **weekly self-update** (`selfheal-update.sh`) that keeps the kit current from its git clone (see [Updates](#updates)).
 
 ## Layout after install
@@ -32,8 +40,9 @@ apt packages, running daemons, and root-only files (even under `/workspace`) do 
   hook.log, hook.log.1                         one line per real bashrc check; .1 is the rotated file
   state/                                       lock, boot id, hook stamps, baselines/, drift/ reports,
                                                kit-version, kit-source, update-last-check, update-last-announced
-  items/_template, 10-tailscale, 20-package-drift, 30-gh-auth
-/workspace/tailscale/                          bin/ (offline binaries), state/ (root-only), state-backup/, logs/, restore.log
+  items/_template, 05-hostname, 10-tailscale, 15-tailscale-online, 20-package-drift, 30-gh-auth, 35-bashrc-hook
+/workspace/tailscale/                          bin/ (offline binaries), state/ (root-only), state-backup/, restore.log,
+                                               logs/ (tailscaled-<date>.log, ts-watch.log: one line per watchdog tick)
 /workspace/config/gh/                          persistent gh login (optional)
 ```
 
@@ -49,12 +58,14 @@ Everything personal comes from one file, `/workspace/restore/config.env` (source
 | `TAILSCALE_SSH` | no | `on` (default) or `off`: whether other devices on your tailnet can SSH into this box via Tailscale SSH |
 | `GH_USER` | no | GitHub login gh should be signed in as; empty = any account (and the item passes if gh auth isn't set up) |
 | `UPDATE_MODE` | no | `auto` (default), `ask` or `off`; see [Updates](#updates) |
+| `WANT_OS_HOSTNAME` | no | Linux hostname item 05 keeps; empty = not managed |
+| `WATCHDOG_INTERVAL` | yes (15-tailscale-online) | watchdog tick in seconds, 30..600 (60 in the example). Missing or malformed: the watchdog refuses to start and item 15 fails |
 
-Until `WANT_HOST` and `WANT_TAILNET` are set, `10-tailscale` reports NEEDS HUMAN. If you don't use Tailscale, disable the item:
-`touch /workspace/restore/items/10-tailscale/DISABLED`.
+Until `WANT_HOST` and `WANT_TAILNET` are set, `10-tailscale` reports NEEDS HUMAN. If you don't use Tailscale, disable both Tailscale items:
+`touch /workspace/restore/items/{10-tailscale,15-tailscale-online}/DISABLED` (item 15 would otherwise start its watchdog loop).
 
 ## Install
-Requirements: bash, `jq`, `flock`, `timeout`, `setsid`, passwordless `sudo -n`, and `curl` (only for the tarball fallback).
+Requirements: bash 5, `jq`, `flock`, `timeout`, `setsid`, `ss` (iproute2), passwordless `sudo -n`, and `curl` (only for the tarball fallback).
 ```bash
 git clone https://github.com/heyalchang/grokbot-box-heal.git /workspace/src/grokbot-box-heal   # OWNER = this repo's owner
 cd /workspace/src/grokbot-box-heal && ./install.sh
@@ -136,15 +147,16 @@ For each `items/NN-name/` in order (names starting with two digits and a dash; `
 
 ## The `~/.bashrc` hook
 Runs above the interactive guard, so `bash -ilc` (agents), SSH and login shells all run it. Silent, scripts only:
-- **Rate limit:** stamp `state/hook-last-run` holds "<boot id> <epoch>". Younger than 15 min and same boot: nothing else happens (no fork, ~0.05 ms on bash 5, where `$EPOCHSECONDS` exists; otherwise one `date +%s`). A missing or unusable epoch (non-numeric, oversized, or in the future) is stale: one check, never an error and never a skip. If the boot id cannot be read, the stamp uses `-` so the 15-minute limit still applies. If `date` fails too, every shell checks and the log shows it.
+- **Rate limit:** stamp `state/hook-last-run` holds "<boot id> <epoch>". Younger than 15 min and same boot: nothing else happens (no fork, ~0.05 ms on bash 5, where `$EPOCHSECONDS` exists; otherwise one `date +%s`). A missing or unusable epoch (non-numeric, oversized, or in the future) is stale: one launch, never an error and never a skip. If the boot id cannot be read, the stamp uses `-` so the 15-minute limit still applies. If `date` fails too, every shell launches and the log shows it.
   Otherwise it rewrites the stamp first (atomically, so concurrent shells skip), then:
-- **New boot** (boot id differs): launches `restore-all.sh --caller bashrc --quiet` in the background at once.
-- **Same boot:** `timeout 2 sudo -n tailscale status --json`; launches restore-all only if it is not `BackendState=Running` and
-  `Self.Online=true`. A persistently broken box gets at most one run per 15 min. If `sudo -n` fails, the hook logs that and does not launch.
+- **Launches `restore-all.sh --caller bashrc --quiet`** in the background, detached. On a new boot (boot id differs) and on the same boot alike. The hook does not inspect Tailscale or anything else itself: the items are the checks, and item 15's check is cheaper and more exact than what the hook used to do inline. A persistently broken box gets at most one run per 15 min. If `sudo -n` fails, the hook logs that and does not launch.
 - **Daily baseline:** if `state/baseline-last-run` is older than 24 h, touches it and runs `restore-baseline-snapshot.sh` in the
   background (after 5 s, so restore-all gets the lock first). On failure the stamp is back-dated so it retries in about 1 h.
-- **Log:** each real check appends one line to `restore/hook.log` (what it saw and what it decided; rotated at 1 MB to `hook.log.1`). Fast-path skips are never logged. A failed write does not break the shell.
+- **Log:** each launch appends one line to `restore/hook.log` (rotated at 1 MB to `hook.log.1`). Fast-path skips are never logged. A failed write does not break the shell. The runner's own `restore.log` rotates at 1 MB too.
 - Loop guard: `RESTORE_ACTIVE` / `TS_RESTORE_ACTIVE` (set by the runner) disable the hook in shells the runner spawns.
+- **What it costs:** one restore-all run per 15 minutes of agent activity: a few hundred ms of CPU, one `gh api user` call
+  (item 30), one dpkg query (item 20), six lines in `restore.log`. Nothing runs while no shell starts; the daily routine is the backstop.
+- Item **35-bashrc-hook** checks that the block is still there and puts it back with `install.sh --hook-only` if an update reset the file.
 
 ## Updates
 `/workspace/bin/selfheal-update.sh [--caller NAME] [--apply] [--force-check]` keeps the kit current from its clone. It does real work at
@@ -182,7 +194,8 @@ The hook only fires when some shell starts, so add one Grok Bot routine, once a 
 > to anything, never relay a login link or code, never install or remove packages unless I ask.
 
 ## Adding an item
-1. `cp -r /workspace/restore/items/_template /workspace/restore/items/40-myname` (the number sets the order; use gaps of 10).
+1. `cp -r /workspace/restore/items/_template /workspace/restore/items/40-myname` (the number sets the order; 05..35 are taken by the kit).
+   An item is also the way to run a periodic job on this box: with the hook, every item is checked every 15 minutes while agents are active, and once a day by the routine. Make `check` say whether the job is due and `restore` do it.
 2. `check`: read-only, fast (60 s hard limit), exit 0 if healthy, print one short line saying what it saw.
 3. `restore`: idempotent, non-interactive (stdin is `/dev/null`, 600 s limit), `sudo -n` for root, prefer offline copies kept under
    `/workspace` over the network. Exit `0` restored · `2` needs a human (no agent) · `75` busy, skip this round · anything else =

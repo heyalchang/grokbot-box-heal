@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# 15-tailscale-online restore. Also (re)starts the ts-watchdog loop.
+# Why: the box VM is paused while idle. All outbound TCP goes through a host-side transparent proxy, which drops tailscaled's
+# flows across a pause without an RST. tailscaled then waits on dead sockets (kernel retransmits ~15 min, tcp_retries2=15), and the
+# node drops off the tailnet. Local Self.Online lags by minutes, so it can't be the only trigger.
+# Fix: abort tailscaled's TCP sockets so it redials at once. Same node, no login, no restart.
+#   restore           runner mode: ensure watchdog; abort STUCK sockets; if still offline after 15 s, abort ALL tailscaled sockets
+#   restore --now     watchdog mode: same, without the 15 s grace
+# STUCK = unacked > 0 and (backoff >= 3, or backoff >= 2 with nothing received for >= 20 s) (a socket the kernel is retransmitting into the void).
+# Exit: 0 ok | 1 failed (still offline / watchdog won't start) | 2 NEEDS HUMAN (watchdog action cap reached, see state flag)
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+WS=${BOX_WORKSPACE:-/workspace}; LOG=$WS/tailscale/restore.log; HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+CAPFLAG=$WS/restore/state/ts-watchdog.capped
+log() { printf '%s [15-tailscale-online %s] %s\n' "$(date '+%F %T %Z')" "${RESTORE_CALLER:-manual}" "$*" >>"$LOG"; }
+TS=/usr/local/bin/tailscale; [ -x "$TS" ] || TS=$(command -v tailscale)
+online() { timeout 10 sudo -n "$TS" status --json 2>/dev/null | jq -e '.BackendState == "Running" and .Self.Online == true' >/dev/null 2>&1; }
+wait_online() { local i; for ((i = 0; i < $1; i++)); do online && return 0; sleep 1; done; return 1; }
+# tailscaled's established sockets: "local peer unacked backoff lastrcv_ms"
+socks() {
+  local pid; pid=$(pgrep -xo tailscaled) || return 0
+  sudo -n ss -tnpiH state established 2>/dev/null | awk -v p="pid=$pid," '
+    index($0, p) { l = $3; r = $4; getline info; ua = 0; bo = 0; lr = 0
+      if (match(info, /unacked:[0-9]+/)) ua = substr(info, RSTART + 8, RLENGTH - 8)
+      if (match(info, /backoff:[0-9]+/)) bo = substr(info, RSTART + 8, RLENGTH - 8)
+      if (match(info, /lastrcv:[0-9]+/)) lr = substr(info, RSTART + 8, RLENGTH - 8)
+      print l, r, ua, bo, lr }'
+}
+abort() {   # abort <all|stuck> -> echoes count; each socket by its exact 4-tuple, never anything that isn't tailscaled's
+  local n=0 l r ua bo lr
+  while read -r l r ua bo lr; do
+    [ -n "$l" ] || continue
+    [ "$1" = all ] || { [ "$ua" -gt 0 ] && { [ "$bo" -ge 3 ] || { [ "$bo" -ge 2 ] && [ "$lr" -ge 20000 ]; }; }; } || continue
+    sudo -n ss -K state established src "$l" dst "$r" >/dev/null 2>&1 && n=$((n + 1))
+  done < <(socks)
+  echo "$n"
+}
+rc=0
+[ -e "$CAPFLAG" ] && { log "NEEDS HUMAN: ts-watchdog hit its action cap ($(cat "$CAPFLAG")); remove $CAPFLAG after looking"; exit 2; }
+# 1. watchdog (idempotent: it holds a flock and exits at once if another copy runs)
+if [ ! -e "$HERE/DISABLED" ] && ! "$HERE/watchdog" --running; then
+  ( exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&-; BOX_WORKSPACE=$WS RESTORE_ACTIVE= setsid nohup "$HERE/watchdog" </dev/null >/dev/null 2>&1 & )
+  sleep 1
+  if "$HERE/watchdog" --running; then log "ACTION: started ts-watchdog"; else log "FAIL: ts-watchdog did not start (last line of $WS/tailscale/logs/ts-watch.log says why)"; rc=1; fi
+fi
+pgrep -x tailscaled >/dev/null || exit $rc            # not running: 10-tailscale's job
+[ "$(timeout 10 sudo -n "$TS" status --json 2>/dev/null | jq -r .BackendState 2>/dev/null)" = Running ] || exit $rc   # NeedsLogin etc.: 10-tailscale's job; never abort a login connection
+command -v ss >/dev/null || { log "FAIL: ss (iproute2) missing"; exit 1; }
+# 2. stuck sockets: abort regardless of Online (Online lags)
+n=$(abort stuck)
+[ "$n" -gt 0 ] && { log "ACTION: aborted $n stuck tailscaled TCP connection(s) (unacked+backoff, silent >=20s)"; sleep 3; }
+# 3. offline: grace (runner mode only), then abort everything
+[ "${1:-}" = --now ] || { wait_online 15 && exit $rc; }
+online && exit $rc
+n=$(abort all)
+log "ACTION: Self.Online=false; aborted all $n tailscaled TCP connection(s) so it redials"
+wait_online 45 && { log "RESTORED: Self.Online=true"; exit $rc; }
+log "FAIL: still offline 45s after resetting tailscaled's TCP connections"
+exit 1
