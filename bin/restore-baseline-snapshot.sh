@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restore-baseline-snapshot.sh: daily package baseline for restore item 20-package-drift.
+# restore-baseline-snapshot.sh: daily package baseline for restore item 200-package-drift.
 # Run once a day, normally by the ~/.bashrc hook:  $BOX_WORKSPACE/bin/restore-baseline-snapshot.sh --caller bashrc
 # Each run:
 #  a) capture the package list (dpkg-query -W -f='${Package}\t${Version}\n', LC_ALL=C sorted)
@@ -41,7 +41,7 @@ flock -w 600 7 || fail "could not get lock $STATE/.restore-all.lock within 600s"
 
 export PKG_DRIFT_STATE=$STATE PKG_DRIFT_DIR=$STATE/drift
 unset PKG_DRIFT_BASELINE
-. "$WS/restore/items/20-package-drift/lib.sh" || fail "cannot source lib.sh"
+. "$WS/restore/items/200-package-drift/lib.sh" || fail "cannot source lib.sh"
 B="$STATE/baselines/packages-$DAY.txt"
 cur=$(current_packages); [ -n "$cur" ] || fail "package list empty (dpkg-query failed?)"
 n=$(printf '%s\n' "$cur" | grep -c .)
@@ -68,7 +68,7 @@ else
   rm -f "$tmpcur"
   tmp="$B.tmp.$$"
   {
-    echo "# packages-$DAY.txt: daily package baseline for restore item 20-package-drift"
+    echo "# packages-$DAY.txt: daily package baseline for restore item 200-package-drift"
     echo "# captured: $(date '+%F %T %Z') by restore-baseline-snapshot.sh (caller $CALLER); previous: ${prev:+$(basename "$prev")}${prev:-none}"
     echo "# format: name<TAB>version, from: dpkg-query -W -f='\${Package}\t\${Version}\n' (LC_ALL=C sorted); read-only, never edited"
     printf '%s\n' "$cur"

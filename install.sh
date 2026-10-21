@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # install.sh: install or update the Grok Bot box restore kit from this clone. Idempotent; safe to re-run.
 #  - copies bin/*.sh            -> $WORKSPACE/bin/
-#  - copies items/*             -> $WORKSPACE/restore/items/ (overwrites kit files; never deletes your own items or DISABLED flags)
+#  - copies items/*             -> $WORKSPACE/restore/items/ (overwrites kit files; never deletes your own items or DISABLED flags;
+#                                  a kit item installed under an older number is moved to state/retired-*, DISABLED carried over)
 #  - copies README.md           -> $WORKSPACE/restore/README.md
 #  - creates $WORKSPACE/restore/config.env from config.env.example if it is missing (never overwrites it);
 #    if it exists, appends any keys new in the example with their defaults (marked "added by update")
@@ -12,7 +13,7 @@
 # It never runs a login, never starts tailscaled, and never runs restore-all. Non-interactive.
 #
 # Usage: ./install.sh [--no-hook] [--no-baseline] [--hook-only]
-#   --hook-only  only (re)install the ~/.bashrc hook block; touch nothing else (used by item 35-bashrc-hook)
+#   --hook-only  only (re)install the ~/.bashrc hook block; touch nothing else (used by item 300-bashrc-hook)
 # Env:   WORKSPACE (default /workspace)   BASHRC (default $HOME/.bashrc)   (override both to test in a scratch dir)
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -51,6 +52,13 @@ for d in "$HERE"/items/*/; do
   name=$(basename "$d"); dest="$WS/restore/items/$name"
   mkdir -p "$dest"
   for f in "$d"* ; do [ -f "$f" ] && cp -p "$f" "$dest/"; done
+  # a kit item that was installed under another number (kit < 1.5.0 used 05..35) is retired into state/, its DISABLED carried over
+  [ "$name" = _template ] && continue
+  for old in "$WS"/restore/items/[0-9]*-"${name#*-}"/; do
+    old=${old%/}; [ -d "$old" ] && [ "$(basename "$old")" != "$name" ] || continue
+    [ -e "$old/DISABLED" ] && touch "$dest/DISABLED"
+    mv "$old" "$WS/restore/state/retired-$(basename "$old")-$(date +%F)" && echo "retired $old (now $name)"
+  done
 done
 install -m 0644 "$HERE/README.md" "$WS/restore/README.md"
 VER=$(tr -d ' \t\r\n' <"$HERE/VERSION" 2>/dev/null); VER=${VER:-unknown}

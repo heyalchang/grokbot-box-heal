@@ -1,4 +1,4 @@
-# shared by check/restore of 05-hostname
+# shared by check/restore of 050-hostname
 CONF=${RESTORE_CONFIG:-${BOX_WORKSPACE:-/workspace}/restore/config.env}
 WANT_OS_HOSTNAME=""
 # shellcheck disable=SC1090

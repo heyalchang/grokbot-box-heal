@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restore-baseline-accept.sh: explicitly accept the CURRENT package set as today's baseline for item 20-package-drift.
+# restore-baseline-accept.sh: explicitly accept the CURRENT package set as today's baseline for item 200-package-drift.
 # Run it ONLY when the box owner explicitly says to accept the current package set. Agents must never run it on their own.
 # (Normally not needed: the daily snapshot absorbs drift into the next day's baseline by itself.)
 #

@@ -1,7 +1,7 @@
-# 10-tailscale: instructions for the agent fallback
+# 100-tailscale: instructions for the agent fallback
 
-This is item `10-tailscale` of the general restore runner (`/workspace/bin/restore-all.sh`, see /workspace/restore/README.md).
-The item check is `/workspace/restore/items/10-tailscale/check` (exit 0 = healthy). The item restore wraps the script below.
+This is item `100-tailscale` of the general restore runner (`/workspace/bin/restore-all.sh`, see /workspace/restore/README.md).
+The item check is `/workspace/restore/items/100-tailscale/check` (exit 0 = healthy). The item restore wraps the script below.
 (Paths assume the default workspace `/workspace`; if `BOX_WORKSPACE` is set, use that instead.)
 
 The expected values live in `/workspace/restore/config.env` (read it; it holds no secrets):
@@ -71,7 +71,7 @@ tailscale status --json | jq -c '{BackendState, tailnet:.CurrentTailnet.Name, ho
 tailscale debug prefs | jq -c '{RunSSH, Hostname}'
 ```
 Expected: `Running`, `$WANT_TAILNET`, `$WANT_HOST`, (`$WANT_IP` if set), `RunSSH: true` (or not true if `TAILSCALE_SSH=off`).
-Then `/workspace/restore/items/10-tailscale/check` must exit 0.
+Then `/workspace/restore/items/100-tailscale/check` must exit 0.
 
 ## Logging
 Append one timestamped line per action you take, and one final result line, to `/workspace/tailscale/restore.log`

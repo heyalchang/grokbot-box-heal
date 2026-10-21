@@ -1,4 +1,4 @@
-# 20-package-drift: check-only package drift alert
+# 200-package-drift: check-only package drift alert
 
 **This item is alert-only and has `NO_AGENT`, so the runner never calls the Grok fallback for it.** This file is for an agent or human
 whom the box owner has explicitly asked to look at a drift alert. (Paths assume the default workspace `/workspace`.)

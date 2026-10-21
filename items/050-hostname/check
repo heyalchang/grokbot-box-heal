@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 05-hostname check: exit 0 if the Linux hostname, /etc/hostname and /etc/hosts match WANT_OS_HOSTNAME and no Chrome
+# 050-hostname check: exit 0 if the Linux hostname, /etc/hostname and /etc/hosts match WANT_OS_HOSTNAME and no Chrome
 # SingletonLock carries another hostname. Read-only. WANT_OS_HOSTNAME empty = item off (reported, passes).
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 35-bashrc-hook check: exit 0 if ~/.bashrc holds the kit's auto-restore hook block exactly as install.sh writes it.
+# 300-bashrc-hook check: exit 0 if ~/.bashrc holds the kit's auto-restore hook block exactly as install.sh writes it.
 # A computer update can reset ~/.bashrc; without the block nothing launches restore-all between daily routine runs.
 # Read-only. The expected block comes from the kit clone recorded in state/kit-source. No secrets.
 export PATH=/usr/local/bin:/usr/bin:/bin

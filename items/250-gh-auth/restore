@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 30-gh-auth restore: re-link the persistent gh login and the git credential helper; never logs in fresh.
+# 250-gh-auth restore: re-link the persistent gh login and the git credential helper; never logs in fresh.
 export HOME=${HOME:-/home/box}
 WS=${BOX_WORKSPACE:-/workspace}
 CONF=${RESTORE_CONFIG:-$WS/restore/config.env}

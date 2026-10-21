@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 20-package-drift check: compare installed packages against the NEWEST daily baseline. Read-only.
+# 200-package-drift check: compare installed packages against the NEWEST daily baseline. Read-only.
 # exit 0: no missing/extra packages, or this exact drift was already reported (deduped). exit 1: new or changed drift.
 set -uo pipefail
 . "$(dirname "$0")/lib.sh"

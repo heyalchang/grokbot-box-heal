@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 20-package-drift restore: ALERT-ONLY. Never installs/removes packages, never writes a baseline.
+# 200-package-drift restore: ALERT-ONLY. Never installs/removes packages, never writes a baseline.
 # Writes a dated diff report + dedupe record, then exits 2 (NEEDS HUMAN) so restore-all.sh returns 20.
 set -uo pipefail
 . "$(dirname "$0")/lib.sh"

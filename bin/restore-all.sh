@@ -83,7 +83,7 @@ agent_fallback() { # agent_fallback <dir> <name> <restore_rc>  -> 0 if agent ran
 # Pass 2: agent fallback, one item at a time, only for items whose restore failed.
 NEED_AGENT=()     # entries: "dir|name|rrc|why"
 n=0
-for dir in "$ITEMS"/[0-9][0-9]-*/; do
+for dir in "$ITEMS"/[0-9][0-9][0-9]-*/; do
   dir=${dir%/}; name=$(basename "$dir")
   [ -d "$dir" ] || continue
   if [ -n "$ONLY" ] && [[ "$name" != *"$ONLY"* ]]; then continue; fi

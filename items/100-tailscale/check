@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 10-tailscale check: exit 0 only if tailscaled is up, Running, on WANT_TAILNET, as WANT_HOST, with Tailscale SSH
+# 100-tailscale check: exit 0 only if tailscaled is up, Running, on WANT_TAILNET, as WANT_HOST, with Tailscale SSH
 # matching TAILSCALE_SSH (on|off, default on).
 # Expected values come from $RESTORE_CONFIG (default $BOX_WORKSPACE/restore/config.env).
 # WANT_IP is informational only (a mismatch is shown, never fails the check). Read-only, no sudo, ~50 ms.

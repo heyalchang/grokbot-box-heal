@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 15-tailscale-online check: exit 0 if the ts-watchdog loop is running and, when tailscaled is
-# Running, its control session is up (Self.Online=true). 10-tailscale only checks BackendState=Running, which stays "Running"
+# 150-tailscale-online check: exit 0 if the ts-watchdog loop is running and, when tailscaled is
+# Running, its control session is up (Self.Online=true). 100-tailscale only checks BackendState=Running, which stays "Running"
 # while the control long-poll is dead. Read-only, no secrets.
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -8,10 +8,10 @@ CAPFLAG=${BOX_WORKSPACE:-/workspace}/restore/state/ts-watchdog.capped
 [ -e "$CAPFLAG" ] && { echo "NEEDS HUMAN: ts-watchdog action cap reached ($(cat "$CAPFLAG")); remove $CAPFLAG"; exit 1; }
 if [ -e "$HERE/DISABLED" ]; then wd="watchdog DISABLED by flag"
 else "$HERE/watchdog" --running || { echo "ts-watchdog not running"; exit 1; }; wd="watchdog running"; fi
-TS=/usr/local/bin/tailscale; [ -x "$TS" ] || TS=$(command -v tailscale) || { echo "$wd; no tailscale binary (10-tailscale handles it)"; exit 0; }
-pgrep -x tailscaled >/dev/null || { echo "$wd; tailscaled not running (10-tailscale handles it)"; exit 0; }
+TS=/usr/local/bin/tailscale; [ -x "$TS" ] || TS=$(command -v tailscale) || { echo "$wd; no tailscale binary (100-tailscale handles it)"; exit 0; }
+pgrep -x tailscaled >/dev/null || { echo "$wd; tailscaled not running (100-tailscale handles it)"; exit 0; }
 j=$(timeout 10 sudo -n "$TS" status --json 2>/dev/null) || { echo "status unavailable"; exit 1; }
 read -r st on <<<"$(jq -r '[.BackendState, (.Self.Online|tostring)] | join(" ")' <<<"$j")"
-[ "$st" = Running ] || { echo "$wd; BackendState=$st (10-tailscale handles it)"; exit 0; }
+[ "$st" = Running ] || { echo "$wd; BackendState=$st (100-tailscale handles it)"; exit 0; }
 [ "$on" = true ] || { echo "Running but Self.Online=$on (control session down)"; exit 1; }
 echo "online, $wd"

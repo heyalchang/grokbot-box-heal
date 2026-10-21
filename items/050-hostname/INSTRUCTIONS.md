@@ -1,4 +1,4 @@
-# 05-hostname
+# 050-hostname
 Healthy = `hostname`, `/etc/hostname` and `/etc/hosts` all say `WANT_OS_HOSTNAME` (config.env; empty = this item is off and
 passes), and no Chrome `SingletonLock` under `$HOME/chrome-profile/*/` carries another hostname. A computer update resets the
 root-owned files, so the box comes back under the platform's generated name. `restore` adds the `/etc/hosts` entry first (so

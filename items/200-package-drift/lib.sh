@@ -1,4 +1,4 @@
-# lib.sh: shared by 20-package-drift check/restore and $BOX_WORKSPACE/bin/restore-baseline-snapshot.sh (sourced, not executed).
+# lib.sh: shared by 200-package-drift check/restore and $BOX_WORKSPACE/bin/restore-baseline-snapshot.sh (sourced, not executed).
 # shellcheck shell=bash disable=SC2034  # sourced library: its variables are used by the scripts that source it
 # Baselines are daily read-only snapshots: $STATE_ROOT/baselines/packages-YYYY-MM-DD.txt (newest = the baseline).
 # Test hooks (env): PKG_DRIFT_STATE=<alt state root>   PKG_DRIFT_BASELINE=<alt baseline file>

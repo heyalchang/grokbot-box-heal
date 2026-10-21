@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 30-gh-auth check: healthy when ~/.config/gh points at the persistent login in $BOX_WORKSPACE/config/gh and gh is signed in
+# 250-gh-auth check: healthy when ~/.config/gh points at the persistent login in $BOX_WORKSPACE/config/gh and gh is signed in
 # (as GH_USER, if set in config.env). If GH_USER is empty and no persistent login exists, gh auth is not in use: pass.
 export HOME=${HOME:-/home/box}
 WS=${BOX_WORKSPACE:-/workspace}

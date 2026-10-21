@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ts-watchdog (item 15-tailscale-online). One copy only (flock), a tick every WATCHDOG_INTERVAL seconds (config.env, required,
+# ts-watchdog (item 150-tailscale-online). One copy only (flock), a tick every WATCHDOG_INTERVAL seconds (config.env, required,
 # 30..600). Missing/malformed setting -> logs why and exits 2.
 #  - logs one line per tick to $WS/tailscale/logs/ts-watch.log: wall/uptime deltas, JUMP flag (wall gap >= interval + 30 s,
 #    i.e. a pause of ~30 s or more), BackendState, Self.Online, and tailscaled's TCP sockets as
@@ -8,10 +8,10 @@
 #    socket-level, independent of the tick), or Online=false on 2 ticks in a row. At most one action per MIN_GAP (60 s).
 #  - cap: MAX_ACTIONS (6) *failed* actions (restore --now exited non-zero: still offline afterwards) per rolling hour. An action
 #    that brings the node back online does not count: a box that freezes every 15 min and recovers every time keeps working.
-#    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (item 15's check then fails -> runner/daily
+#    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (item 150's check then fails -> runner/daily
 #    routine alert) and only logs. Re-arm: remove the flag, pkill this loop, run restore-all (a fresh loop has a clean count).
 #  - kill switch: $HERE/DISABLED is checked every tick and before every action; the loop exits within one tick.
-#    For an immediate stop also run: pkill -f items/15-tailscale-online/watchdog
+#    For an immediate stop also run: pkill -f items/150-tailscale-online/watchdog
 #  - log: rotates at 5 MB to ts-watch.log.1 (max ~10 MB on disk; ~0.35 MB/day at a 60 s tick).
 # Usage: watchdog | watchdog --running (exit 0 if a copy runs)
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin

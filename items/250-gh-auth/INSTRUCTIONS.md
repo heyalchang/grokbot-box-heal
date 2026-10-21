@@ -1,4 +1,4 @@
-# 30-gh-auth
+# 250-gh-auth
 
 GitHub CLI login (optionally checked against `GH_USER` in `/workspace/restore/config.env`), stored persistently in
 `/workspace/config/gh` (dir 0700, files 0600, box-owned) and symlinked from `~/.config/gh`.
