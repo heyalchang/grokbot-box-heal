@@ -5,7 +5,8 @@
 #    i.e. a pause of ~30 s or more), BackendState, Self.Online, and tailscaled's TCP sockets as
 #    peer/q<Send-Q>/u<unacked>/b<backoff>/r<lastrcv ms>. No secrets.
 #  - acts (runs `restore --now`) when a tailscaled socket is STUCK (unacked>0 and backoff>=3, or backoff>=2 and silent >=20 s;
-#    socket-level, independent of the tick), or Online=false on 2 ticks in a row. At most one action per MIN_GAP (60 s).
+#    socket-level, independent of the tick), or when tailscaled is down / not Running+Online on 2 ticks in a row (NeedsLogin and
+#    NeedsMachineAuth are ignored so an unauthenticated node never burns the action cap). At most one action per MIN_GAP (60 s).
 #  - cap: MAX_ACTIONS (6) *failed* actions (restore --now exited non-zero: still offline afterwards) per rolling hour. An action
 #    that brings the node back online does not count: a box that freezes every 15 min and recovers every time keeps working.
 #    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (item 150's check then fails -> runner/daily
@@ -49,11 +50,18 @@ while :; do
         printf "%s/q%s/u%s/b%s/r%s%s ", peer, q, ua, bo, lr, (ua > 0 && (bo >= 3 || (bo >= 2 && lr >= 20000))) ? "/STUCK" : "" }')
     case "$socks" in *STUCK*) stuck=1 ;; esac
   fi
-  [ "$on" = true ] && off=0 || off=$((off + 1))
+  case "$st" in
+    NeedsLogin|NeedsMachineAuth) off=0 ;;
+    Running) [ "$on" = true ] && off=0 || off=$((off + 1)) ;;
+    *) off=$((off + 1)) ;;
+  esac
   say "dwall=${dw}s dup=${du}s $jump state=${st:-?} online=${on:-?} tcp=[${socks% }]"
   why=""
   [ "$stuck" = 1 ] && why="stuck socket"
-  [ "$st" = Running ] && [ "$off" -ge 2 ] && why="${why:+$why, }offline $((off * INT))s"
+  if [ "$off" -ge 2 ]; then
+    if [ "$st" = Running ]; then why="${why:+$why, }offline $((off * INT))s"
+    else why="${why:+$why, }state=${st:-down} $((off * INT))s"; fi
+  fi
   if [ -n "$why" ] && [ $((w - last_act)) -ge "$MIN_GAP" ]; then
     # rolling 1 h window of FAILED actions
     keep=(); for t in "${fails[@]}"; do [ $((w - t)) -lt 3600 ] && keep+=("$t"); done; fails=("${keep[@]}")

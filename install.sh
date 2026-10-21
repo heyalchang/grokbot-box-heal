@@ -3,6 +3,7 @@
 #  - copies bin/*.sh            -> $WORKSPACE/bin/
 #  - copies items/*             -> $WORKSPACE/restore/items/ (overwrites kit files; never deletes your own items or DISABLED flags;
 #                                  a kit item installed under an older number is moved to state/retired-*, DISABLED carried over)
+#  - copies jobs/*              -> $WORKSPACE/restore/jobs/ (overwrites kit files; never deletes your own jobs or DISABLED flags)
 #  - copies README.md           -> $WORKSPACE/restore/README.md
 #  - creates $WORKSPACE/restore/config.env from config.env.example if it is missing (never overwrites it);
 #    if it exists, appends any keys new in the example with their defaults (marked "added by update")
@@ -25,7 +26,7 @@ while [ $# -gt 0 ]; do
     --no-hook) DO_HOOK=0 ;;
     --no-baseline) DO_BASELINE=0 ;;
     --hook-only) HOOK_ONLY=1 ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 64 ;;
   esac
   shift
@@ -33,7 +34,7 @@ done
 BEGIN='# >>> box auto-restore >>>'
 END='# <<< box auto-restore <<<'
 
-[ -d "$HERE/bin" ] && [ -d "$HERE/items" ] && [ -f "$HERE/hook/bashrc-block.sh" ] || { echo "run install.sh from a clone of the repo" >&2; exit 1; }
+[ -d "$HERE/bin" ] && [ -d "$HERE/items" ] && [ -d "$HERE/jobs" ] && [ -f "$HERE/hook/bashrc-block.sh" ] || { echo "run install.sh from a clone of the repo" >&2; exit 1; }
 [[ "$WS" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "WORKSPACE must be an absolute path of [A-Za-z0-9._/-] characters: $WS" >&2; exit 1; }
 WS=${WS%/}
 
@@ -46,7 +47,7 @@ if [ "$HOOK_ONLY" = 1 ]; then
 fi
 if [ "$HOOK_ONLY" = 0 ]; then
 echo "installing into $WS"
-mkdir -p "$WS/bin" "$WS/restore/items" "$WS/restore/state"
+mkdir -p "$WS/bin" "$WS/restore/items" "$WS/restore/jobs" "$WS/restore/state"
 for f in "$HERE"/bin/*.sh; do install -m 0755 "$f" "$WS/bin/"; done
 for d in "$HERE"/items/*/; do
   name=$(basename "$d"); dest="$WS/restore/items/$name"
@@ -60,6 +61,12 @@ for d in "$HERE"/items/*/; do
     mv "$old" "$WS/restore/state/retired-$(basename "$old")-$(date +%F)" && echo "retired $old (now $name)"
   done
 done
+for d in "$HERE"/jobs/*/; do
+  name=$(basename "$d"); dest="$WS/restore/jobs/$name"
+  mkdir -p "$dest"
+  for f in "$d"* ; do [ -f "$f" ] && cp -p "$f" "$dest/"; done
+done
+rm -f "$WS/restore/state/baseline-last-run" "$WS/restore/state/update-last-check"
 install -m 0644 "$HERE/README.md" "$WS/restore/README.md"
 VER=$(tr -d ' \t\r\n' <"$HERE/VERSION" 2>/dev/null); VER=${VER:-unknown}
 if [ -e "$WS/restore/config.env" ]; then
@@ -111,8 +118,11 @@ fi
 
 if [ "$DO_BASELINE" = 1 ] && command -v dpkg-query >/dev/null 2>&1 \
    && ! ls "$WS"/restore/state/baselines/packages-*.txt >/dev/null 2>&1; then
-  BOX_WORKSPACE=$WS "$WS/bin/restore-baseline-snapshot.sh" --caller install || echo "warning: first package baseline failed; the hook retries later" >&2
-  touch "$WS/restore/state/baseline-last-run"
+  if BOX_WORKSPACE=$WS "$WS/bin/restore-baseline-snapshot.sh" --caller install; then
+    printf '%s 0 initial baseline\n' "$(date +%s)" >"$WS/restore/state/job-last-run.100-baseline-snapshot"
+  else
+    echo "warning: first package baseline failed; job 100-baseline-snapshot retries later" >&2
+  fi
 fi
 
 commit=$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)

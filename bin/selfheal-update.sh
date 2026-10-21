@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# selfheal-update.sh: optional weekly self-update of this kit from its git clone (state/kit-source).
-# Usage: selfheal-update.sh [--caller NAME] [--apply] [--force-check]
-#   UPDATE_MODE (config.env): auto = fast-forward, re-install, re-check, roll back on failure
-#                             ask  = announce a new version once; off = do nothing (an explicit --apply still works)
-#   --apply        update now, whatever UPDATE_MODE says     --force-check   ignore the 7-day rate limit
-# Exit: 0  nothing to do (up to date, rate-limited, off, already announced, or busy)
+# selfheal-update.sh: on-demand update helper for this kit from its git clone (state/kit-source).
+# Never runs on a schedule by itself; intended to be run by the box owner or an agent when inspecting/applying updates.
+# Usage: selfheal-update.sh [--caller NAME] [--apply]
+#   UPDATE_MODE (config.env): off  = (default) do nothing unless --apply is given
+#                             ask  = announce a new version once ("vNEW available: <changelog>")
+#                             auto = fast-forward, re-install, re-check, roll back on failure
+#   --apply        update now, whatever UPDATE_MODE says
+# Exit: 0  nothing to do (up to date, off, already announced, or busy)
 #       10 updated (one line: "updated vOLD -> vNEW: <changelog>")
 #       11 new version available, ask mode (announced once per version)
 #       20 needs a human (clone has uncommitted edits or diverged, not on main, fetch failed, kit-source unknown)
@@ -17,13 +19,13 @@ main() {
   export BOX_WORKSPACE=${BOX_WORKSPACE:-/workspace}
   export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
   local WS=$BOX_WORKSPACE ROOT=$BOX_WORKSPACE/restore STATE=$BOX_WORKSPACE/restore/state
-  local LOG=$ROOT/restore.log CALLER=manual APPLY=0 FORCE=0 MODE BRANCH=main
+  local LOG=$ROOT/restore.log CALLER=manual APPLY=0 MODE BRANCH=main
   while [ $# -gt 0 ]; do
     case "$1" in
       --caller) CALLER=${2:-}; shift ;;
       --apply) APPLY=1 ;;
-      --force-check) FORCE=1 ;;
-      -h|--help) sed -n '2,13p' "$0"; return 0 ;;
+      --force-check) ;;   # accepted for backwards compatibility; rate-limit stamp was removed
+      -h|--help) sed -n '2,14p' "$0"; return 0 ;;
       *) echo "unknown arg: $1" >&2; return 64 ;;
     esac
     shift
@@ -33,17 +35,13 @@ main() {
   quiet() { sed -E 's#https?://[^ ]+#<url>#g' | while IFS= read -r l; do [ -n "${l// }" ] && log "  $l"; done; }   # output -> log only
 
   # shellcheck disable=SC1091
-  MODE=$( [ -r "$ROOT/config.env" ] && . "$ROOT/config.env" >/dev/null 2>&1; echo "${UPDATE_MODE:-auto}")
-  case $MODE in auto|ask|off) ;; *) log "unknown UPDATE_MODE=$MODE; treating as ask"; MODE=ask ;; esac
+  MODE=$( [ -r "$ROOT/config.env" ] && . "$ROOT/config.env" >/dev/null 2>&1; echo "${UPDATE_MODE:-off}")
+  case $MODE in auto|ask|off) ;; *) log "unknown UPDATE_MODE=$MODE; treating as off"; MODE=off ;; esac
   [ "$MODE" = off ] && [ "$APPLY" = 0 ] && return 0
   mkdir -p "$STATE"
 
   exec 8>>"$STATE/.selfheal-update.lock"
   flock -n 8 || { log "another update run holds the lock; skipping"; return 0; }
-
-  local STAMP=$STATE/update-last-check
-  if [ "$FORCE" = 0 ] && [ -n "$(find "$STAMP" -mmin -10080 2>/dev/null)" ]; then return 0; fi
-  touch "$STAMP"
 
   local SRC IV="" IC="" rc=0
   SRC=$(cat "$STATE/kit-source" 2>/dev/null)
@@ -53,7 +51,6 @@ main() {
   fi
   timeout 120 git -C "$SRC" fetch --quiet origin "$BRANCH" 2>&1 | quiet; rc=${PIPESTATUS[0]}
   if [ "$rc" != 0 ]; then
-    touch -d '-6 days' "$STAMP"   # retry in about a day
     say "update check: git fetch failed in $SRC"; return 20
   fi
   local NEW NV LINES
@@ -87,15 +84,15 @@ main() {
   if [ "$rc" != 0 ]; then
     log "install.sh of v$NV failed (exit $rc)"; rc=30
   else
-    "$WS/bin/restore-all.sh" --caller update </dev/null >/dev/null 2>&1; rc=$?   # it logs its own summary lines
+    "$WS/bin/restore-all.sh" --caller update --no-jobs </dev/null >/dev/null 2>&1; rc=$?   # it logs its own summary lines
     log "restore-all after update: exit $rc"
   fi
   if [ "$rc" = 30 ]; then
     log "rolling back to ${OLD:0:12}"
     git -C "$SRC" reset --hard -q "$OLD" 2>&1 | quiet
     # files the new version added are not in the old one; remove the installed copies so they don't linger
-    git -C "$SRC" diff --name-only --diff-filter=A "$OLD" "$NEW" -- bin items | while IFS= read -r f; do
-      case $f in bin/*) rm -f "$WS/$f" ;; items/*) rm -f "$ROOT/$f"; rmdir "$(dirname "$ROOT/$f")" 2>/dev/null ;; esac
+    git -C "$SRC" diff --name-only --diff-filter=A "$OLD" "$NEW" -- bin items jobs | while IFS= read -r f; do
+      case $f in bin/*) rm -f "$WS/$f" ;; items/*|jobs/*) rm -f "$ROOT/$f"; rmdir "$(dirname "$ROOT/$f")" 2>/dev/null ;; esac
     done
     local OV; OV=$(tr -d ' \t\r\n' <"$SRC/VERSION" 2>/dev/null); OV=${OV:-$IV}
     (cd "$SRC" && WORKSPACE=$WS ./install.sh ${hookarg:+"$hookarg"} </dev/null) 2>&1 | quiet; rc=${PIPESTATUS[0]}

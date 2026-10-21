@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# RUN — periodic job script. Runs at most once per INTERVAL seconds (see ./INTERVAL, whole integer >= 60).
+# Must be idempotent and non-interactive (stdin is /dev/null; hard limit 600 s). Never print secrets.
+# Print ONE short line summarizing what happened (goes to /workspace/restore/restore.log).
+# Exit codes:
+#   0      ok, nothing notable (logged; does not bump restore-all's exit code)
+#   10/11  did work / FYI change (bumps restore-all exit code to 10)
+#   2/20   NEEDS HUMAN (bumps restore-all exit code to 20)
+#   75     temporarily busy (skipped this round; stamp not updated)
+#   other  FAILED (bumps restore-all exit code to 30)
+# Env provided by the runner: JOB_NAME, JOB_DIR, RESTORE_CALLER, RESTORE_LOG, RESTORE_CONFIG, BOX_WORKSPACE.
+echo "template job: replace me"
+exit 0
