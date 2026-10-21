@@ -83,7 +83,7 @@ while :; do
     elif [ ! -e "$HERE/DISABLED" ]; then
       last_act=$w
       RESTORE_CALLER=watchdog BOX_WORKSPACE=$WS "$HERE/restore" --now 9>&-; rc=$?
-      if [ "$rc" -ne 0 ] || [ "$st" != Running ]; then
+      if [ "$rc" -ne 0 ] || [[ "$why" == *state=* ]]; then
         keep+=("$w")
         printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"
       elif [ "${#keep[@]}" -gt 0 ]; then

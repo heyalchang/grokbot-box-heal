@@ -38,7 +38,7 @@ fail() { log "FAILED: $*"; echo "FAILED: $*" >&2; exit 1; }
 
 mkdir -p "$STATE/baselines" "$STATE/drift" || { echo "FAILED: cannot create dirs under $STATE" >&2; exit 1; }
 exec 7>>"$STATE/.restore-all.lock"
-flock -w 600 7 || { log "BUSY: could not get lock $STATE/.restore-all.lock within 600s"; echo "BUSY: could not get lock $STATE/.restore-all.lock within 600s" >&2; exit 75; }
+flock -w 60 7 || { log "BUSY: could not get lock $STATE/.restore-all.lock within 60s"; echo "BUSY: could not get lock $STATE/.restore-all.lock within 60s" >&2; exit 75; }   # < JOB_TIMEOUT (600s) so 75 fires before timeout kills us
 
 export PKG_DRIFT_STATE=$STATE PKG_DRIFT_DIR=$STATE/drift
 unset PKG_DRIFT_BASELINE
