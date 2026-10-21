@@ -1,19 +1,19 @@
-# 200-package-drift: check-only package drift alert
+# 200-package-drift: runbook (for a person or the daily agent)
 
-**This item is alert-only and has `NO_AGENT`, so the runner never calls the Grok fallback for it.** This file is for an agent or human
-whom the box owner has explicitly asked to look at a drift alert. (Paths assume the default workspace `/workspace`.)
+**This item is alert-only: it never installs or removes packages.** This file is for a person or the daily agent whom the box owner
+has asked to look at a drift alert. (Paths assume the default workspace `/workspace`.)
 
 ## Daily baselines (automatic)
-- `/workspace/bin/restore-baseline-snapshot.sh` runs once a day, started by the `~/.bashrc` hook (first shell after the
-  `state/baseline-last-run` stamp is 24 h old) or by a daily routine with `--caller routine`. Each run:
+- `/workspace/bin/restore-baseline-snapshot.sh` runs once a day via periodic job `400-baseline-snapshot` (stamp
+  `state/job-last-run.400-baseline-snapshot`). Each run:
   1. Captures `dpkg-query -W -f='${Package}\t${Version}\n'` (LC_ALL=C sorted).
   2. Diffs it against the previous baseline. If anything changed, it writes `state/drift/overnight-YYYY-MM-DD.txt`, so drift the new
      baseline absorbs is still on record.
   3. Saves `state/baselines/packages-YYYY-MM-DD.txt` read-only (444). If a file already exists for that date, it's kept.
   4. Points `state/packages-baseline.txt` (a symlink) at the newest baseline.
   5. Keeps the newest **365** dated baselines and deletes only older `packages-YYYY-MM-DD.txt` files.
-  6. Holds the same lock as restore-all.sh.
-  Exit codes: 0 saved, no change · 10 saved and differences found (the report path goes on stdout) · 30 failed.
+  6. Holds `.restore-all.lock`.
+  Exit codes: 0 saved, no change · 10 saved and differences found (the report path goes on stdout) · 75 busy · 1 failed.
 - `install.sh` takes the first baseline if none exists. Without any baseline, `check` fails with "baseline ... missing".
 
 ## What the check does

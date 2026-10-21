@@ -4,3 +4,4 @@ state/
 *.log
 drift/
 baselines/
+.worktrees/

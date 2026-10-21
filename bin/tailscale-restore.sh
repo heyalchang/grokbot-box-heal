@@ -8,8 +8,7 @@
 # Usage: tailscale-restore.sh [--first-run]
 #   --first-run  (human use, one time) allow starting tailscaled with an EMPTY state dir, so the owner can then sign in with
 #                `sudo tailscale up ...` themselves. Still never logs in; ends with exit 2 NEEDS LOGIN until someone signs in.
-# Exit codes: 0 healthy/restored | 2 NEEDS LOGIN (or config missing) | 3 no sudo | 4 binaries unavailable
-#             5 tailscaled failed to start | 6 still unhealthy | 75 another run holds the lock
+# Exit codes: 0 healthy/restored | 2 NEEDS LOGIN (or config/offline binaries missing) | 75 another run holds the lock | 1 failed
 set -uo pipefail
 export PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -35,7 +34,7 @@ STATE_DIR=$TS_HOME/state
 STATE_FILE=$STATE_DIR/tailscaled.state
 INSTALL_DIR=/usr/local/bin
 SOCK=/var/run/tailscale/tailscaled.sock
-LOG=$TS_HOME/restore.log
+LOG=$WS/restore/restore.log
 LOCK=$TS_HOME/.restore.lock
 BACKUP_DIR=$TS_HOME/state-backup          # box-owned copy of the root-only state dir (0700 dir, 0600 files)
 BACKUP_META=$BACKUP_DIR/.meta             # "source=Running ..." line; written only from a verified-healthy node
@@ -48,10 +47,10 @@ TSD="$INSTALL_DIR/tailscaled"
 ACTIONS=0
 CALLER="${TS_RESTORE_CALLER:-manual}"
 
-log() { printf '%s [pid %s %s] %s\n' "$(date '+%F %T %Z')" "$$" "$CALLER" "$*" >>"$LOG"; [ -t 1 ] && printf '%s\n' "$*"; return 0; }
+log() { printf '%s [tailscale-restore pid %s %s] %s\n' "$(date '+%F %T %Z')" "$$" "$CALLER" "$*" >>"$LOG"; [ -t 1 ] && printf '%s\n' "$*"; return 0; }
 die() { local rc=$1; shift; log "FAIL($rc): $*"; exit "$rc"; }
 
-mkdir -p "$TS_HOME" "$(dirname "$DAEMON_LOG")"
+mkdir -p "$TS_HOME" "$(dirname "$LOG")" "$(dirname "$DAEMON_LOG")"
 if [ -z "$WANT_HOST" ] || [ -z "$WANT_TAILNET" ]; then
   die 2 "NEEDS HUMAN: WANT_HOST and WANT_TAILNET must be set in $CONF (see config.env.example)"
 fi
@@ -59,7 +58,7 @@ exec 9>>"$LOCK"
 if ! flock -w 20 9; then log "another restore run holds the lock; skipping"; exit 75; fi
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
-"${SUDO[@]}" true 2>/dev/null || die 3 "passwordless sudo unavailable"
+"${SUDO[@]}" true 2>/dev/null || die 1 "passwordless sudo unavailable"
 
 tsc() { "${SUDO[@]}" "$TS" --socket="$SOCK" "$@"; }
 st_json() { tsc status --json 2>/dev/null; }
@@ -153,25 +152,10 @@ warn_if_backup() {
 if ! bin_ok "$TS" || ! [ -x "$TSD" ] || ! "$TSD" --version >/dev/null 2>&1; then
   if bin_ok "$BACKUP_BIN/tailscale" && "$BACKUP_BIN/tailscaled" --version >/dev/null 2>&1; then
     "${SUDO[@]}" install -m 0755 "$BACKUP_BIN/tailscale" "$BACKUP_BIN/tailscaled" "$INSTALL_DIR/" \
-      || die 4 "install from $BACKUP_BIN failed"
+      || die 1 "install from $BACKUP_BIN failed"
     log "ACTION: installed tailscale+tailscaled $("$TS" version | head -1) into $INSTALL_DIR from backup (offline)"
   else
-    log "backup binaries missing/broken in $BACKUP_BIN; falling back to official static tarball"
-    tmp=$(mktemp -d) || die 4 "mktemp failed"
-    (
-      set -e; cd "$tmp"
-      case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; armv7l) ARCH=arm ;; i?86) ARCH=386 ;; *) exit 1 ;; esac
-      VER=$(curl -fsSL "https://pkgs.tailscale.com/stable/?mode=json" | jq -r .TarballsVersion)
-      curl -fsSL -o "ts_${VER}.tgz" "https://pkgs.tailscale.com/stable/tailscale_${VER}_${ARCH}.tgz"
-      echo "$(curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${VER}_${ARCH}.tgz.sha256")  ts_${VER}.tgz" | sha256sum -c - >/dev/null
-      tar xzf "ts_${VER}.tgz"
-      mkdir -p "$BACKUP_BIN"
-      install -m 0755 "tailscale_${VER}_${ARCH}/tailscale" "tailscale_${VER}_${ARCH}/tailscaled" "$BACKUP_BIN/"
-    ) || { rm -rf "$tmp"; die 4 "tarball download/verify failed"; }
-    rm -rf "$tmp"
-    "${SUDO[@]}" install -m 0755 "$BACKUP_BIN/tailscale" "$BACKUP_BIN/tailscaled" "$INSTALL_DIR/" \
-      || die 4 "install after download failed"
-    log "ACTION: downloaded+verified $("$TS" version | head -1), saved to $BACKUP_BIN, installed into $INSTALL_DIR"
+    die 2 "NEEDS HUMAN: offline tailscale binaries missing or broken in $BACKUP_BIN; copy tailscale and tailscaled in by hand (README)"
   fi
   ACTIONS=$((ACTIONS + 1))
 fi
@@ -200,6 +184,7 @@ fi
 
 # ---- 3. daemon -----------------------------------------------------------
 start_daemon() {
+  find "$(dirname "$DAEMON_LOG")" -maxdepth 1 -name 'tailscaled-*.log' -mtime +14 -delete 2>/dev/null || true
   "${SUDO[@]}" sh -c 'cd / && nohup setsid "$1" --state="$2" --statedir="$3" --socket="$4" >>"$5" 2>&1 </dev/null &' \
     sh "$TSD" "$STATE_FILE" "$STATE_DIR" "$SOCK" "$DAEMON_LOG"
 }
@@ -214,14 +199,14 @@ else
   log "ACTION: started tailscaled --state=$STATE_FILE --statedir=$STATE_DIR --socket=$SOCK (log $DAEMON_LOG)"
 fi
 S=$(wait_backend 30)
-[ "$S" = unknown ] && die 5 "tailscaled did not come up (see $DAEMON_LOG)"
+[ "$S" = unknown ] && die 1 "tailscaled did not come up (see $DAEMON_LOG)"
 
 # ---- 4. profile / backend ------------------------------------------------
 if [ "$(tailnet)" != "$WANT_TAILNET" ]; then
   pid=$(tsc switch --list 2>/dev/null | awk -v t="$WANT_TAILNET" 'NR>1 && ($2==t || $3==t || $3==t"*") {print $1; exit}')
   [ -n "$pid" ] || { warn_if_backup; die 2 "NEEDS LOGIN: no saved profile for $WANT_TAILNET (current tailnet '$(tailnet)'); not logging in$FR_HINT"; }
   log "active tailnet is '$(tailnet)' (state $S); switching to profile $pid ($WANT_TAILNET)"
-  tsc switch "$pid" >/dev/null 2>&1 || die 6 "tailscale switch $pid failed"
+  tsc switch "$pid" >/dev/null 2>&1 || die 1 "tailscale switch $pid failed"
   ACTIONS=$((ACTIONS + 1)); log "ACTION: switched to profile $pid"
   sleep 2; S=$(wait_backend 30)
 fi
@@ -238,7 +223,7 @@ if [ "$S" != Running ]; then
   ACTIONS=$((ACTIONS + 1)); S=$(wait_backend 30)
 fi
 case "$S" in NeedsLogin|NeedsMachineAuth) warn_if_backup; die 2 "NEEDS LOGIN: BackendState=$S after up$FR_HINT" ;; esac
-[ "$S" = Running ] || die 6 "BackendState=$S after recovery attempts ($(summary))"
+[ "$S" = Running ] || die 1 "BackendState=$S after recovery attempts ($(summary))"
 
 ssh_is() { [ "$(run_ssh)" = true ] && echo true || echo false; }   # RunSSH as true/false (unreadable = false)
 if [ "$(ssh_is)" != "$WANT_RUNSSH" ] || [ "$(st_json | jq -r '.Self.HostName')" != "$WANT_HOST" ]; then
@@ -249,8 +234,8 @@ fi
 # ---- 5. verify -----------------------------------------------------------
 SUM=$(summary); SSH=$(run_ssh)
 read -r _ tn sfx host ip <<<"$SUM"
-[ "$tn" = "$WANT_TAILNET" ] || die 6 "wrong tailnet after recovery: $SUM"
-[ -z "$WANT_SUFFIX" ] || [ "$sfx" = "$WANT_SUFFIX" ] || die 6 "wrong MagicDNS suffix after recovery: $SUM (want $WANT_SUFFIX)"
+[ "$tn" = "$WANT_TAILNET" ] || die 1 "wrong tailnet after recovery: $SUM"
+[ -z "$WANT_SUFFIX" ] || [ "$sfx" = "$WANT_SUFFIX" ] || die 1 "wrong MagicDNS suffix after recovery: $SUM (want $WANT_SUFFIX)"
 [ -z "$WANT_IP" ] || [ "$ip" = "$WANT_IP" ] || log "WARN: IP is $ip, expected $WANT_IP (node may have been re-registered)"
 [ "$host" = "$WANT_HOST" ] || log "WARN: hostname is $host, expected $WANT_HOST"
 # verified Running on $WANT_TAILNET: keep the box-owned state backup current (no-op unless contents changed)

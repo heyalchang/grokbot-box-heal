@@ -6,6 +6,7 @@ export PATH=/usr/local/bin:/usr/bin:/bin
 WS=${BOX_WORKSPACE:-/workspace}; BASHRC=${BASHRC:-${HOME:-/home/box}/.bashrc}
 SRC=""; read -r SRC 2>/dev/null <"$WS/restore/state/kit-source"
 [ -n "$SRC" ] && [ -f "$SRC/hook/bashrc-block.sh" ] || { echo "kit clone unknown or missing (state/kit-source -> '$SRC'); re-run install.sh from the clone"; exit 1; }
+[ -x "$WS/bin/restore-hook.sh" ] || { echo "restore-hook.sh missing"; exit 1; }
 [ -f "$BASHRC" ] || { echo "$BASHRC missing"; exit 1; }
 BEGIN='# >>> box auto-restore >>>'; END='# <<< box auto-restore <<<'
 nb=$(grep -cxF "$BEGIN" "$BASHRC"); ne=$(grep -cxF "$END" "$BASHRC")

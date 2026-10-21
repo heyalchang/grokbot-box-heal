@@ -2,7 +2,7 @@
 # CHECK — exit 0 if this thing is healthy, nonzero if it needs a restore.
 # Rules: read-only, fast (< a few seconds; hard limit 60 s), no network if avoidable, no secrets in output.
 # Print ONE short line saying what you saw (it goes into /workspace/restore/restore.log).
-# Env provided by the runner: ITEM_NAME, ITEM_DIR, RESTORE_CALLER, RESTORE_LOG.
+# Env provided by the runner: ITEM_NAME, ITEM_DIR, RESTORE_CALLER, RESTORE_LOG, RESTORE_CONFIG, BOX_WORKSPACE.
 #
 # Example:
 #   command -v socat >/dev/null || { echo "socat missing"; exit 1; }

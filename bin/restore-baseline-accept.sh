@@ -9,7 +9,7 @@
 #   --state-dir  alt state root (default $BOX_WORKSPACE/restore/state; use a temp dir for tests)
 # Effect: moves today's dated baseline (if any) to <state>/baseline-history/, re-runs restore-baseline-snapshot.sh so
 # today's baseline is the live package list, clears the drift dedupe record, and logs who/why.
-# Exit: the snapshot's exit code (0 / 10 / 30), or 64 on bad usage.
+# Exit: the snapshot's exit code (0 / 10 / 1), or 64 on bad usage.
 set -euo pipefail
 export LC_ALL=C
 WS=${BOX_WORKSPACE:-/workspace}

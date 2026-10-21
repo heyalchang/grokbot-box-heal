@@ -2,12 +2,9 @@
 # RESTORE — make the check pass again. Must be idempotent and non-interactive (stdin is /dev/null; hard limit 600 s).
 # Prefer offline sources under /workspace (e.g. a saved binary or .deb); fetch from the network only as a fallback.
 # Use `sudo -n` for root. Never print keys/tokens/state contents.
-# Exit codes (the runner relies on these):
-#   0   restored (the runner re-runs check to confirm)
-#   2   NEEDS HUMAN (e.g. needs an interactive login/approval) -> no agent fallback, runner alerts
-#   75  temporarily busy (e.g. a lock held) -> skipped this round
-#   any other nonzero = failed -> runner invokes the Grok agent with INSTRUCTIONS.md (rate-limited)
-# Env provided by the runner: ITEM_NAME, ITEM_DIR, RESTORE_CALLER, RESTORE_LOG.
+# Exit codes (shared across everything the runner calls):
+#   0 ok · 2 needs a human · 10 did work (jobs only; for items the runner sees work by checking before and after) · 75 busy, skip this round · anything else = failed.
+# Env provided by the runner: ITEM_NAME, ITEM_DIR, RESTORE_CALLER, RESTORE_LOG, RESTORE_CONFIG, BOX_WORKSPACE.
 #
 # Example:
 #   sudo -n apt-get install -y socat >/dev/null 2>&1 || exit 1

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# RUN — periodic job script. Runs at most once per INTERVAL seconds (see ./INTERVAL, whole integer >= 60).
+# Must be idempotent and non-interactive (stdin is /dev/null; hard limit 600 s). Never print secrets.
+# Print ONE short line summarizing what happened (goes to /workspace/restore/restore.log).
+# Exit codes (shared across everything the runner calls):
+#   0 ok · 2 needs a human · 10 did work (jobs only; for items the runner sees work by checking before and after) · 75 busy, skip this round · anything else = failed.
+# Env provided by the runner: JOB_NAME, JOB_DIR, RESTORE_CALLER, RESTORE_LOG, RESTORE_CONFIG, BOX_WORKSPACE.
+echo "template job: replace me"
+exit 0
