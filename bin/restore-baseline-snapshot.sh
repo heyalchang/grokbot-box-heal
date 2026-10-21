@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # restore-baseline-snapshot.sh: daily package baseline for restore item 200-package-drift.
-# Run once a day, normally by the ~/.bashrc hook:  $BOX_WORKSPACE/bin/restore-baseline-snapshot.sh --caller bashrc
+# Run once a day, normally by job 400-baseline-snapshot:  $BOX_WORKSPACE/bin/restore-baseline-snapshot.sh --caller job:400-baseline-snapshot
 # Each run:
 #  a) capture the package list (dpkg-query -W -f='${Package}\t${Version}\n', LC_ALL=C sorted)
 #  b) diff vs the newest existing baseline dated before today; if different, write state/drift/overnight-YYYY-MM-DD.txt
@@ -11,6 +11,7 @@
 #  f) holds the same flock as restore-all.sh (state/.restore-all.lock)
 # Exit: 0 saved, no change vs previous baseline (also: first baseline, or today's already existed)
 #       10 saved and differences were found (report path printed on stdout)
+#       75 busy (lock held)
 #       1 failed
 # Test options: --state-dir DIR (alt state root), --date YYYY-MM-DD (pretend date), --keep N; env PKG_DRIFT_CURRENT=<file>
 # Env: BOX_WORKSPACE (default /workspace)
@@ -24,7 +25,7 @@ while [ $# -gt 0 ]; do
     --state-dir) STATE=${2:-}; shift ;;
     --date) DAY=${2:-}; shift ;;
     --keep) KEEP=${2:-}; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
   shift
@@ -37,7 +38,7 @@ fail() { log "FAILED: $*"; echo "FAILED: $*" >&2; exit 1; }
 
 mkdir -p "$STATE/baselines" "$STATE/drift" || { echo "FAILED: cannot create dirs under $STATE" >&2; exit 1; }
 exec 7>>"$STATE/.restore-all.lock"
-flock -w 600 7 || fail "could not get lock $STATE/.restore-all.lock within 600s"
+flock -w 600 7 || { log "BUSY: could not get lock $STATE/.restore-all.lock within 600s"; echo "BUSY: could not get lock $STATE/.restore-all.lock within 600s" >&2; exit 75; }
 
 export PKG_DRIFT_STATE=$STATE PKG_DRIFT_DIR=$STATE/drift
 unset PKG_DRIFT_BASELINE

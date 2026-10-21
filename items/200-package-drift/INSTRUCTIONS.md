@@ -13,7 +13,7 @@ has asked to look at a drift alert. (Paths assume the default workspace `/worksp
   4. Points `state/packages-baseline.txt` (a symlink) at the newest baseline.
   5. Keeps the newest **365** dated baselines and deletes only older `packages-YYYY-MM-DD.txt` files.
   6. Holds `.restore-all.lock`.
-  Exit codes: 0 saved, no change · 10 saved and differences found (the report path goes on stdout) · 30 failed.
+  Exit codes: 0 saved, no change · 10 saved and differences found (the report path goes on stdout) · 75 busy · 1 failed.
 - `install.sh` takes the first baseline if none exists. Without any baseline, `check` fails with "baseline ... missing".
 
 ## What the check does

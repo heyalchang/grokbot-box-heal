@@ -68,7 +68,8 @@ for d in "$HERE"/jobs/*/; do
 done
 rm -f "$WS"/restore/state/agent-last-run.* "$WS/restore/agent-restore.log" \
       "$WS"/restore/hook.log* "$WS/tailscale/restore.log" \
-      "$WS/restore/state/baseline-last-run" "$WS/restore/state/update-last-check"
+      "$WS/restore/state/baseline-last-run" "$WS/restore/state/update-last-check" \
+      "$WS/bin/selfheal-update.sh" "$WS/restore/state/.selfheal-update.lock" "$WS/restore/state/update-last-announced"
 install -m 0644 "$HERE/README.md" "$WS/restore/README.md"
 VER=$(tr -d ' \t\r\n' <"$HERE/VERSION" 2>/dev/null); VER=${VER:-unknown}
 if [ -e "$WS/restore/config.env" ]; then

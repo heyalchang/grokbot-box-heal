@@ -60,7 +60,7 @@ while :; do
   esac
   say "dwall=${dw}s dup=${du}s $jump state=${st:-?} online=${on:-?} tcp=[${socks% }]"
   why=""
-  [ "$stuck" = 1 ] && why="stuck socket"
+  case "$st" in NeedsLogin|NeedsMachineAuth|Stopped) ;; *) [ "$stuck" = 1 ] && why="stuck socket" ;; esac
   if [ "$off" -ge 2 ]; then
     if [ "$st" = Running ]; then why="${why:+$why, }offline $((off * INT))s"
     else why="${why:+$why, }state=${st:-down} $((off * INT))s"; fi

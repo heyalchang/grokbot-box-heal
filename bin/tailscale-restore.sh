@@ -47,7 +47,7 @@ TSD="$INSTALL_DIR/tailscaled"
 ACTIONS=0
 CALLER="${TS_RESTORE_CALLER:-manual}"
 
-log() { printf '%s [pid %s %s] %s\n' "$(date '+%F %T %Z')" "$$" "$CALLER" "$*" >>"$LOG"; [ -t 1 ] && printf '%s\n' "$*"; return 0; }
+log() { printf '%s [tailscale-restore pid %s %s] %s\n' "$(date '+%F %T %Z')" "$$" "$CALLER" "$*" >>"$LOG"; [ -t 1 ] && printf '%s\n' "$*"; return 0; }
 die() { local rc=$1; shift; log "FAIL($rc): $*"; exit "$rc"; }
 
 mkdir -p "$TS_HOME" "$(dirname "$LOG")" "$(dirname "$DAEMON_LOG")"
