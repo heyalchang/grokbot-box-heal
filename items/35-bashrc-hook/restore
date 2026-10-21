@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# 35-bashrc-hook restore: put the kit's hook block back into ~/.bashrc by running install.sh --hook-only from the clone
+# recorded in state/kit-source. Only the marked block changes; the rest of the file is left alone. Unbalanced markers make
+# install.sh refuse (exit 1) so a hand-edited file is never clobbered. Exit 0 restored | 1 failed (NO_AGENT: the runner alerts).
+export PATH=/usr/local/bin:/usr/bin:/bin
+WS=${BOX_WORKSPACE:-/workspace}
+SRC=""; read -r SRC <"$WS/restore/state/kit-source" 2>/dev/null
+[ -n "$SRC" ] && [ -x "$SRC/install.sh" ] || { echo "kit clone unknown or missing (state/kit-source -> '$SRC')"; exit 1; }
+WORKSPACE=$WS "$SRC/install.sh" --hook-only </dev/null

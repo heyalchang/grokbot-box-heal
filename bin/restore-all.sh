@@ -43,6 +43,7 @@ while [ $# -gt 0 ]; do
 done
 export RESTORE_CALLER=$CALLER
 mkdir -p "$STATE"
+[ "$(stat -c %s "$RESTORE_LOG" 2>/dev/null || echo 0)" -gt 1048576 ] && mv -f "$RESTORE_LOG" "$RESTORE_LOG.1"   # rotate at 1 MB, one old copy
 
 log() { printf '%s [restore-all pid %s %s] %s\n' "$(date '+%F %T %Z')" "$$" "$CALLER" "$*" >>"$RESTORE_LOG"; }
 say() { log "$*"; [ "$QUIET" = 1 ] || printf '%s\n' "$*"; }

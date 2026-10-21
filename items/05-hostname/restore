@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# 05-hostname restore: set the Linux hostname to WANT_OS_HOSTNAME (root files reset on a computer update).
+# Order: /etc/hosts first (so sudo resolves the new name), then hostname(1), then /etc/hostname, then repoint Chrome
+# SingletonLocks written under another hostname to the new one (same pid) so box-chrome can still hand launches to running
+# browsers and cold launches aren't refused. Never kills a browser. Exit 0 done | 1 failed (NO_AGENT: runner alerts).
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+LOG=${RESTORE_LOG:-${BOX_WORKSPACE:-/workspace}/restore/restore.log}
+log() { printf '%s [05-hostname %s] %s\n' "$(date '+%F %T %Z')" "${RESTORE_CALLER:-manual}" "$*" | tee -a "$LOG" >&2; }
+H=$WANT_OS_HOSTNAME
+[ -n "$H" ] || exit 0
+[[ "$H" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { log "FAIL: WANT_OS_HOSTNAME '$H' is not a valid hostname"; exit 1; }
+sudo -n true 2>/dev/null || { log "FAIL: passwordless sudo unavailable"; exit 1; }
+old=$(hostname)
+if ! hosts_ok; then
+  printf '127.0.1.1\t%s\n' "$H" | sudo -n tee -a /etc/hosts >/dev/null || { log "FAIL: could not add $H to /etc/hosts"; exit 1; }
+  log "ACTION: added '127.0.1.1 $H' to /etc/hosts"
+fi
+if [ "$old" != "$H" ]; then
+  sudo -n hostname "$H" || { log "FAIL: sudo hostname $H failed"; exit 1; }
+  log "ACTION: hostname $old -> $H"
+fi
+if [ "$(cat /etc/hostname 2>/dev/null)" != "$H" ]; then
+  printf '%s\n' "$H" | sudo -n tee /etc/hostname >/dev/null || { log "FAIL: could not write /etc/hostname"; exit 1; }
+  log "ACTION: wrote /etc/hostname"
+fi
+rc=0
+while read -r l; do
+  [ -n "$l" ] || continue
+  t=$(readlink "$l"); pid=${t##*-}
+  [[ "$pid" =~ ^[0-9]+$ ]] || { log "WARN: unexpected SingletonLock target in $(dirname "$l"); left alone"; rc=1; continue; }
+  owner=$(stat -c %U "$l"); tmp="$(dirname "$l")/.SingletonLock.tmp.$$"
+  if sudo -n -u "$owner" sh -c 'ln -sfn "$1" "$2" && mv -fT "$2" "$3"' sh "$H-$pid" "$tmp" "$l"; then
+    log "ACTION: repointed $(basename "$(dirname "$l")") SingletonLock ${t%-*}-$pid -> $H-$pid"
+  else
+    log "FAIL: could not repoint $l"; rc=1
+  fi
+done < <(stale_locks)
+exit $rc

@@ -11,17 +11,19 @@
 #  - takes the first package baseline if none exists (dpkg-query only)
 # It never runs a login, never starts tailscaled, and never runs restore-all. Non-interactive.
 #
-# Usage: ./install.sh [--no-hook] [--no-baseline]
+# Usage: ./install.sh [--no-hook] [--no-baseline] [--hook-only]
+#   --hook-only  only (re)install the ~/.bashrc hook block; touch nothing else (used by item 35-bashrc-hook)
 # Env:   WORKSPACE (default /workspace)   BASHRC (default $HOME/.bashrc)   (override both to test in a scratch dir)
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WS=${WORKSPACE:-/workspace}
 BASHRC=${BASHRC:-${HOME:-/home/box}/.bashrc}
-DO_HOOK=1 DO_BASELINE=1
+DO_HOOK=1 DO_BASELINE=1 HOOK_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-hook) DO_HOOK=0 ;;
     --no-baseline) DO_BASELINE=0 ;;
+    --hook-only) HOOK_ONLY=1 ;;
     -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 64 ;;
   esac
@@ -37,6 +39,11 @@ WS=${WS%/}
 for c in jq flock timeout sudo setsid; do command -v "$c" >/dev/null 2>&1 || echo "warning: '$c' not found; the kit needs it" >&2; done
 [ -n "${EPOCHSECONDS:-}" ] || echo "warning: this bash has no EPOCHSECONDS; the hook's 15-min limit shells out to date +%s" >&2
 
+if [ "$HOOK_ONLY" = 1 ]; then
+  [ "$DO_HOOK" = 1 ] || { echo "--hook-only and --no-hook together make no sense" >&2; exit 64; }
+  [ -d "$WS/restore/state" ] || { echo "no install under $WS yet; run install.sh without --hook-only first" >&2; exit 1; }
+fi
+if [ "$HOOK_ONLY" = 0 ]; then
 echo "installing into $WS"
 mkdir -p "$WS/bin" "$WS/restore/items" "$WS/restore/state"
 for f in "$HERE"/bin/*.sh; do install -m 0755 "$f" "$WS/bin/"; done
@@ -64,6 +71,7 @@ else
   install -m 0644 "$HERE/config.env.example" "$WS/restore/config.env"
   echo "created $WS/restore/config.env from the example: edit it (WANT_HOST, WANT_TAILNET, optional WANT_SUFFIX/WANT_IP/GH_USER)"
 fi
+fi   # HOOK_ONLY
 
 if [ "$DO_HOOK" = 1 ]; then
   block=$(sed "s#@WS@#$WS#g" "$HERE/hook/bashrc-block.sh")
@@ -91,6 +99,7 @@ if [ "$DO_HOOK" = 1 ]; then
   fi
   rm -f "$tmp"
 fi
+[ "$HOOK_ONLY" = 0 ] || exit 0
 
 if [ "$DO_BASELINE" = 1 ] && command -v dpkg-query >/dev/null 2>&1 \
    && ! ls "$WS"/restore/state/baselines/packages-*.txt >/dev/null 2>&1; then

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# 05-hostname check: exit 0 if the Linux hostname, /etc/hostname and /etc/hosts match WANT_OS_HOSTNAME and no Chrome
+# SingletonLock carries another hostname. Read-only. WANT_OS_HOSTNAME empty = item off (reported, passes).
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+[ -n "$WANT_OS_HOSTNAME" ] || { echo "WANT_OS_HOSTNAME not set in $CONF; hostname not managed (is $(hostname))"; exit 0; }
+[ "$(hostname)" = "$WANT_OS_HOSTNAME" ] || { echo "hostname is $(hostname), want $WANT_OS_HOSTNAME"; exit 1; }
+[ "$(cat /etc/hostname 2>/dev/null)" = "$WANT_OS_HOSTNAME" ] || { echo "/etc/hostname is '$(cat /etc/hostname 2>/dev/null)', want $WANT_OS_HOSTNAME"; exit 1; }
+hosts_ok || { echo "/etc/hosts has no entry for $WANT_OS_HOSTNAME"; exit 1; }
+n=$(stale_locks | wc -l); [ "$n" -eq 0 ] || { echo "$n Chrome SingletonLock(s) carry an old hostname"; exit 1; }
+echo "hostname $WANT_OS_HOSTNAME (/etc/hostname, /etc/hosts, Chrome locks ok)"

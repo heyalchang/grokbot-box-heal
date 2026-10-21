@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# 35-bashrc-hook check: exit 0 if ~/.bashrc holds the kit's auto-restore hook block exactly as install.sh writes it.
+# A computer update can reset ~/.bashrc; without the block nothing launches restore-all between daily routine runs.
+# Read-only. The expected block comes from the kit clone recorded in state/kit-source. No secrets.
+export PATH=/usr/local/bin:/usr/bin:/bin
+WS=${BOX_WORKSPACE:-/workspace}; BASHRC=${BASHRC:-${HOME:-/home/box}/.bashrc}
+SRC=""; read -r SRC <"$WS/restore/state/kit-source" 2>/dev/null
+[ -n "$SRC" ] && [ -f "$SRC/hook/bashrc-block.sh" ] || { echo "kit clone unknown or missing (state/kit-source -> '$SRC'); re-run install.sh from the clone"; exit 1; }
+[ -f "$BASHRC" ] || { echo "$BASHRC missing"; exit 1; }
+BEGIN='# >>> box auto-restore >>>'; END='# <<< box auto-restore <<<'
+nb=$(grep -cxF "$BEGIN" "$BASHRC"); ne=$(grep -cxF "$END" "$BASHRC")
+[ "$nb" = 1 ] && [ "$ne" = 1 ] || { echo "hook block missing or unbalanced in $BASHRC (begin=$nb end=$ne)"; exit 1; }
+want=$(sed "s#@WS@#$WS#g" "$SRC/hook/bashrc-block.sh")
+have=$(awk -v b="$BEGIN" -v e="$END" '$0 == b { p = 1 } p { print } $0 == e { exit }' "$BASHRC")
+[ "$have" = "$want" ] || { echo "hook block in $BASHRC differs from kit v$(tr -d ' \t\r\n' <"$SRC/VERSION" 2>/dev/null) in $SRC"; exit 1; }
+echo "hook block current in $BASHRC"
