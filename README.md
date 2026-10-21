@@ -1,8 +1,8 @@
 # grokbot-box-heal
 
-A small self-heal kit for a Grok Bot box: the shared Linux VM your Grok Bot agents run on.  Platform resets, spontaneous re-installs and machine sleeps can reset state and hang tailscale.   This puts the box back together after the platform resets and keeps Tailscale reachable through the VM's idle pauses.
+A small self-heal kit for a Grok Bot box: the shared Linux VM your Grok Bot agents run on. Platform resets, spontaneous re-installs and machine sleeps can reset state and hang tailscale. This puts the box back together after the platform resets and keeps Tailscale reachable through the VM's idle pauses.
 
-Note to agents:  "boundary and the invariants" section is at the end.
+Note to agents: "boundary and the invariants" section is at the end.
 
 ## The Grokbot VM box
 
@@ -68,8 +68,7 @@ git clone https://github.com/heyalchang/grokbot-box-heal.git /workspace/src/grok
 cd /workspace/src/grokbot-box-heal && ./install.sh
 $EDITOR /workspace/restore/config.env
 ```
-Keep the clone where it is (`install.sh` records its path in `state/kit-source` for item 300). `install.sh` is idempotent and non-interactive; re-running it after a `git pull` is how you update. It copies scripts, items, and jobs, creates `config.env` only if missing (an existing one is never overwritten; settings new in a version are appended with their defaults, marked "added by update"), records the installed version and commit, installs or replaces the 3-line `~/.bashrc` block between `# >>> box
-auto-restore >>>` and `# <<< box auto-restore <<<` (leaving the rest of the file alone; a backup goes to `state/`), and takes the first package baseline if none exists. It never runs a login. Options: `--no-hook`, `--no-baseline`, `--hook-only`. To try it in a scratch dir: `WORKSPACE=/tmp/x BASHRC=/tmp/x/bashrc ./install.sh` (scripts then need `BOX_WORKSPACE=/tmp/x`).
+Keep the clone where it is (`install.sh` records its path in `state/kit-source` for item 300). `install.sh` is idempotent and non-interactive; re-running it after a `git pull` is how you update. It copies scripts, items, and jobs, creates `config.env` only if missing (an existing one is never overwritten; settings new in a version are appended with their defaults, marked "added by update"), records the installed version and commit, installs or replaces the 3-line `~/.bashrc` block between `# >>> box auto-restore >>>` and `# <<< box auto-restore <<<` (leaving the rest of the file alone; a backup goes to `state/`), and takes the first package baseline if none exists. It never runs a login. Options: `--no-hook`, `--no-baseline`, `--hook-only`. To try it in a scratch dir: `WORKSPACE=/tmp/x BASHRC=/tmp/x/bashrc ./install.sh` (scripts then need `BOX_WORKSPACE=/tmp/x`).
 
 Re-installing re-copies kit files but never deletes your own items, jobs, or `DISABLED` flags. To uninstall the hook, delete the lines between (and including) the two markers.
 
@@ -99,13 +98,11 @@ gh auth login --hostname github.com --git-protocol https --web --insecure-storag
 gh auth setup-git
 chmod 600 /workspace/config/gh/*
 ```
-`--insecure-storage` is needed because the box has no keyring; the token goes into `hosts.yml`. Set `GH_USER` in config.env if you
-want the check to insist on a specific account.
+`--insecure-storage` is needed because the box has no keyring; the token goes into `hosts.yml`. Set `GH_USER` in config.env if you want the check to insist on a specific account.
 
 ## Security trade-off (read this)
 To survive an update, two secrets live as plain files readable by the box user:
-- `/workspace/tailscale/state-backup/` holds a copy of the Tailscale node state (node key, SSH host keys, certs). Anyone who can
-  read it can impersonate this node on your tailnet.
+- `/workspace/tailscale/state-backup/` holds a copy of the Tailscale node state (node key, SSH host keys, certs). Anyone who can read it can impersonate this node on your tailnet.
 - `/workspace/config/gh/hosts.yml` holds the gh OAuth token with the scopes you granted.
 
 The box is one machine shared by **all** of your Grok Bot agents, so every agent can read these files. Files are 0600/0700, which only stops other Unix users. If that's not acceptable, skip the gh step, disable `250-gh-auth`, and/or limit what the node and token can reach (Tailscale ACLs/tags, a fine-grained or narrowly scoped GitHub token). The scripts never print, log, or upload these contents, and every `INSTRUCTIONS.md` forbids agents from doing so.
@@ -116,34 +113,29 @@ The box is one machine shared by **all** of your Grok Bot agents, so every agent
 1. **Heal items** (`items/NNN-name/` in order, under `.restore-all.lock`; `_template` is skipped):
    - Run `check` (60 s limit). Exit 0 = healthy, move on.
    - Otherwise run `restore` (600 s limit, stdin `/dev/null`), then `check` again.
-2. **Periodic jobs** (`jobs/NNN-name/` in order, after releasing `.restore-all.lock` and taking `.restore-jobs.lock`; `_template`
-   is skipped):
+2. **Periodic jobs** (`jobs/NNN-name/` in order, after releasing `.restore-all.lock` and taking `.restore-jobs.lock`; `_template` is skipped):
    - Each job has an `INTERVAL` file (whole seconds `>= 60`, e.g. `86400` for daily) and an executable `run` script.
-   - Checked against `state/job-last-run.<name>`. If not due yet (and `--only` was not given), skipped silently with no log line
-     (if the previous run failed, its `NEEDS HUMAN` / `FAILED` status is still surfaced until the next run succeeds).
+   - Checked against `state/job-last-run.<name>`. If not due yet (and `--only` was not given), skipped silently with no log line (if the previous run failed, its `NEEDS HUMAN` / `FAILED` status is still surfaced until the next run succeeds).
    - When due (or matched by `--only`), run `run` (600 s limit, stdin `/dev/null`).
-3. One summary line per item (and per due/failing job) goes to stdout and `restore.log`. One item or job failing never stops the
-   others.
+3. One summary line per item (and per due/failing job) goes to stdout and `restore.log`. One item or job failing never stops the others.
 
 ### Exit codes (worst wins: 30 > 20 > 10 > 0)
 | code | meaning | alert? |
 |---|---|---|
-| 0  | everything healthy, nothing done (or only routine jobs ran with exit 0) | no |
+| 0 | everything healthy, nothing done (or only routine jobs ran with exit 0) | no |
 | 10 | something was restored, or a job did work (exit 10); all fine now | FYI |
 | 20 | NEEDS HUMAN: an item or job needs a person (Tailscale NEEDS LOGIN, package drift, gh token rejected, config missing) | **yes** |
 | 30 | FAILED: an item is still broken after restore, or a job failed | **yes** |
 | 75 | another runner holds the lock; nothing done | no |
 
-**Shared exit-code table for everything the runner calls** (`restore`, `run`, `tailscale-restore.sh`,
-`restore-baseline-snapshot.sh`): `0` ok · `2` needs a human · `10` did work (jobs only; for items the runner sees work by checking before and after) · `75` busy, skip this round · anything else = failed. (`check` exits `0` when healthy, nonzero when it needs`restore`.)
+**Shared exit-code table for everything the runner calls** (`restore`, `run`, `tailscale-restore.sh`, `restore-baseline-snapshot.sh`): `0` ok · `2` needs a human · `10` did work (jobs only; for items the runner sees work by checking before and after) · `75` busy, skip this round · anything else = failed. (`check` exits `0` when healthy, nonzero when it needs`restore`.)
 
 ## The `~/.bashrc` hook
 The block is three lines (`[ -r /workspace/bin/restore-hook.sh ] && . /workspace/bin/restore-hook.sh` between markers), above the interactive guard, so `bash -ilc` (agents), SSH and login shells all source it. Sourcing does not fork.
 - At most once per 15 minutes, or at once on a new boot, it launches `restore-all.sh --caller bashrc --quiet` detached. The stamp is `state/hook-last-run` ("<boot id> <epoch>"); an unreadable stamp counts as stale, so a bad stamp can never stop launches or break the shell. If `sudo -n` fails it logs that and does not launch. Details are in the header of `bin/restore-hook.sh`.
 - Each launch appends one `[hook]` line to `restore/restore.log`. Fast-path skips are not logged.
 - `RESTORE_ACTIVE` (set by the runner and the watchdog) disables the hook in shells they spawn.
-- Cost: one runner pass per 15 minutes of agent activity: a few hundred ms of CPU, one `gh api user` call, one dpkg query, a few
-  log lines. Nothing runs while no shell starts except the Tailscale watchdog; the daily routine is the backstop.
+- Cost: one runner pass per 15 minutes of agent activity: a few hundred ms of CPU, one `gh api user` call, one dpkg query, a few log lines. Nothing runs while no shell starts except the Tailscale watchdog; the daily routine is the backstop.
 - Item **300-bashrc-hook** checks the file and the block and puts them back with `install.sh --hook-only`.
 
 ## Updates
@@ -154,14 +146,9 @@ git -C <clone> pull --ff-only && <clone>/install.sh && /workspace/bin/restore-al
 To roll back: check out the previous commit in the clone and re-run `install.sh`. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Suggested daily Grok Bot routine
-The hook only fires when some shell starts, so add one Grok Bot routine, once a day, as the backstop and alert path. Example
-prompt:
+The hook only fires when some shell starts, so add one Grok Bot routine, once a day, as the backstop and alert path. Example prompt:
 
-> Daily box health check. Run `/workspace/bin/restore-all.sh --caller routine; echo "exit=$?"`. Then read the last 24 h of
-> `/workspace/restore/restore.log`. If the exit was 0, 10 or 75 and the log shows nothing new and alarming, stay silent. If it was
-> 20 or 30, message me with one short paragraph: which item or job, what the summary line says, and what I need to do (for package
-> drift, summarize the newest report in `/workspace/restore/state/drift/`). Never print secrets, never sign in to anything, never
-> relay a login link or code, never install or remove packages unless I ask.
+> Daily box health check. Run `/workspace/bin/restore-all.sh --caller routine; echo "exit=$?"`. Then read the last 24 h of `/workspace/restore/restore.log`. If the exit was 0, 10 or 75 and the log shows nothing new and alarming, stay silent. If it was 20 or 30, message me with one short paragraph: which item or job, what the summary line says, and what I need to do (for package drift, summarize the newest report in `/workspace/restore/state/drift/`). Never print secrets, never sign in to anything, never relay a login link or code, never install or remove packages unless I ask.
 
 ## Adding an item or periodic job
 **Heal item** (`/workspace/restore/items/NNN-name/`, checked every 15 min; 050..300 are used by the kit, spaced by 50):
@@ -191,8 +178,7 @@ Read this before changing the kit. Mechanics live in the sections above and in e
 **Invariants**, each with the one reason it exists:
 
 1. No daemon but the Tailscale watchdog, and the watchdog never runs the runner. The runner fires only from the hook and the daily routine. A second resident process has the same liveness problem as the first, and a watchdog that schedules is a cron daemon.
-2. The watchdog keeps Tailscale reachable and does nothing else. Its cap counts failed actions and daemon restarts, never a socket abort that recovered: pausing is normal life here, and a cap that counted recoveries would disarm itself. In `NeedsLogin`,
-   `NeedsMachineAuth` and `Stopped` it does not act at all; a human is already in the loop.
+2. The watchdog keeps Tailscale reachable and does nothing else. Its cap counts failed actions and daemon restarts, never a socket abort that recovered: pausing is normal life here, and a cap that counted recoveries would disarm itself. In `NeedsLogin`, `NeedsMachineAuth` and `Stopped` it does not act at all; a human is already in the loop.
 3. Nothing pulls into the box on its own: no self-update, no binary download, no headless agent. Updates are read first, then applied by hand (`git pull && ./install.sh`). The kit runs as root, so a scheduled pull is a root-propagation path.
 4. A lock is held by the process that took it. A detached child starts with a clean fd set and no inherited lock or loop-guard state; an env var that bypasses `flock` leaks straight through `setsid`.
 5. Secrets never appear in output, logs or copies: node state, tokens, login links, codes. No fresh logins, no minting credentials. Alert-only items never install or remove anything.
