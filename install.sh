@@ -35,6 +35,7 @@ END='# <<< box auto-restore <<<'
 WS=${WS%/}
 
 for c in jq flock timeout sudo setsid; do command -v "$c" >/dev/null 2>&1 || echo "warning: '$c' not found; the kit needs it" >&2; done
+[ -n "${EPOCHSECONDS:-}" ] || echo "warning: this bash has no EPOCHSECONDS; the hook's 15-min limit shells out to date +%s" >&2
 
 echo "installing into $WS"
 mkdir -p "$WS/bin" "$WS/restore/items" "$WS/restore/state"
