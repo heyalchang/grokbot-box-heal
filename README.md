@@ -1,6 +1,6 @@
 # grokbot-box-heal
 
-A small self-heal kit for a Grok Bot box: the shared Linux VM your Grok Bot agents run on.  Platform resets, sponteneous re-installs and machine sleeps can reset state and hang tailscale.   This puts the box back together after the platform resets and keeps Tailscale reachable through the VM's idle pauses.
+A small self-heal kit for a Grok Bot box: the shared Linux VM your Grok Bot agents run on.  Platform resets, spontaneous re-installs and machine sleeps can reset state and hang tailscale.   This puts the box back together after the platform resets and keeps Tailscale reachable through the VM's idle pauses.
 
 Note to agents:  "boundary and the invariants" section is at the end.
 
