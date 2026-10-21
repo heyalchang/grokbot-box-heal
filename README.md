@@ -29,6 +29,7 @@ apt packages, running daemons, and root-only files (even under `/workspace`) do 
   config.env                                   your settings (not in git; created from config.env.example)
   README.md                                    this file
   restore.log, agent-restore.log               runner log, agent fallback output
+  hook.log, hook.log.1                         one line per real bashrc check; .1 is the rotated file
   state/                                       lock, boot id, hook stamps, baselines/, drift/ reports,
                                                kit-version, kit-source, update-last-check, update-last-announced
   items/_template, 10-tailscale, 20-package-drift, 30-gh-auth
@@ -135,13 +136,14 @@ For each `items/NN-name/` in order (names starting with two digits and a dash; `
 
 ## The `~/.bashrc` hook
 Runs above the interactive guard, so `bash -ilc` (agents), SSH and login shells all run it. Silent, scripts only:
-- **Rate limit:** stamp `state/hook-last-run` holds the boot id. Younger than 15 min and same boot: nothing else happens (~1 ms).
+- **Rate limit:** stamp `state/hook-last-run` holds "<boot id> <epoch>". Younger than 15 min and same boot: nothing else happens (no fork, ~0.05 ms). A missing or unusable epoch (non-numeric, oversized, or in the future) is stale: one check, never an error and never a skip.
   Otherwise it rewrites the stamp first (atomically, so concurrent shells skip), then:
 - **New boot** (boot id differs): launches `restore-all.sh --caller bashrc --quiet` in the background at once.
 - **Same boot:** `timeout 2 sudo -n tailscale status --json`; launches restore-all only if it is not `BackendState=Running` and
-  `Self.Online=true`. A persistently broken box gets at most one run per 15 min.
+  `Self.Online=true`. A persistently broken box gets at most one run per 15 min. If `sudo -n` fails, the hook logs that and does not launch.
 - **Daily baseline:** if `state/baseline-last-run` is older than 24 h, touches it and runs `restore-baseline-snapshot.sh` in the
   background (after 5 s, so restore-all gets the lock first). On failure the stamp is back-dated so it retries in about 1 h.
+- **Log:** each real check appends one line to `restore/hook.log` (what it saw and what it decided; rotated at 1 MB to `hook.log.1`). Fast-path skips are never logged. A failed write does not break the shell.
 - Loop guard: `RESTORE_ACTIVE` / `TS_RESTORE_ACTIVE` (set by the runner) disable the hook in shells the runner spawns.
 
 ## Updates
