@@ -5,12 +5,14 @@
 #    i.e. a pause of ~30 s or more), BackendState, Self.Online, and tailscaled's TCP sockets as
 #    peer/q<Send-Q>/u<unacked>/b<backoff>/r<lastrcv ms>. No secrets.
 #  - acts (runs `restore --now`) when a tailscaled socket is STUCK (unacked>0 and backoff>=3, or backoff>=2 and silent >=20 s;
-#    socket-level, independent of the tick), or when tailscaled is down / not Running+Online on 2 ticks in a row (NeedsLogin and
-#    NeedsMachineAuth are ignored so an unauthenticated node never burns the action cap). At most one action per MIN_GAP (60 s).
-#  - cap: MAX_ACTIONS (6) *failed* actions (restore --now exited non-zero: still offline afterwards) per rolling hour, tracked in
-#    $WS/restore/state/ts-watchdog.fails (one epoch per line). An action that brings the node back online does not count: a box
-#    that freezes every 15 min and recovers every time keeps working. Past the cap it stops acting, writes
-#    $WS/restore/state/ts-watchdog.capped (item 150's check then fails -> runner/daily routine alert) and only logs.
+#    socket-level, independent of the tick), or when tailscaled is down / Running with Online=false on 2 ticks in a row
+#    (NeedsLogin, NeedsMachineAuth, and Stopped are ignored so an unauthenticated or deliberately downed node is left alone).
+#    At most one action per MIN_GAP (60 s).
+#  - cap: MAX_ACTIONS (6) failed actions or daemon restarts (when tailscaled was not Running) per rolling hour, tracked in
+#    $WS/restore/state/ts-watchdog.fails (one epoch per line). A socket-abort action on a Running node that brings it back online
+#    does not count: a box that freezes every 15 min and recovers every time keeps working; a crash-looping tailscaled hits the cap.
+#    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (item 150's check then fails -> runner/daily routine
+#    alert) and only logs.
 #    To re-arm, remove both ts-watchdog.capped and ts-watchdog.fails (no pkill or restart needed).
 #  - kill switch: $HERE/DISABLED is checked every tick and before every action; the loop exits within one tick.
 #    For an immediate stop also run: pkill -f items/150-tailscale-online/watchdog
@@ -53,7 +55,7 @@ while :; do
     case "$socks" in *STUCK*) stuck=1 ;; esac
   fi
   case "$st" in
-    NeedsLogin|NeedsMachineAuth) off=0 ;;
+    NeedsLogin|NeedsMachineAuth|Stopped) off=0 ;;
     Running) [ "$on" = true ] && off=0 || off=$((off + 1)) ;;
     *) off=$((off + 1)) ;;
   esac
@@ -65,7 +67,7 @@ while :; do
     else why="${why:+$why, }state=${st:-down} $((off * INT))s"; fi
   fi
   if [ -n "$why" ] && [ $((w - last_act)) -ge "$MIN_GAP" ]; then
-    # rolling 1 h window of FAILED actions in $FAILFILE (one epoch per line)
+    # rolling 1 h window of failed actions + daemon restarts in $FAILFILE (one epoch per line)
     keep=()
     if [ -r "$FAILFILE" ]; then
       while read -r t _; do
@@ -75,20 +77,25 @@ while :; do
     if [ "${#keep[@]}" -ge "$MAX_ACTIONS" ] || [ -e "$CAPFLAG" ]; then
       if [ "${#keep[@]}" -gt 0 ]; then printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"; else rm -f "$FAILFILE"; fi
       if [ ! -e "$CAPFLAG" ]; then
-        echo "${#keep[@]} failed actions within 1h, last at $(date '+%F %T %Z')" >"$CAPFLAG"
-        say "CAP REACHED (${#keep[@]} failed actions/h): NOT acting any more; NEEDS HUMAN. Remove $CAPFLAG and $FAILFILE to re-arm."
-        printf '%s [ts-watchdog] NEEDS HUMAN: action cap reached (%s failed/h); stopped acting (%s)\n' "$(date '+%F %T %Z')" "$MAX_ACTIONS" "$CAPFLAG" >>"$WS/tailscale/restore.log"
+        echo "${#keep[@]} failed/restart actions within 1h, last at $(date '+%F %T %Z')" >"$CAPFLAG"
+        say "CAP REACHED (${#keep[@]} failed/restart actions/h): NOT acting any more; NEEDS HUMAN. Remove $CAPFLAG and $FAILFILE to re-arm."
+        printf '%s [ts-watchdog] NEEDS HUMAN: action cap reached (%s failed/restart/h); stopped acting (%s)\n' "$(date '+%F %T %Z')" "$MAX_ACTIONS" "$CAPFLAG" >>"$WS/tailscale/restore.log"
       fi
     elif [ ! -e "$HERE/DISABLED" ]; then
       last_act=$w
       RESTORE_CALLER=watchdog BOX_WORKSPACE=$WS "$HERE/restore" --now 9>&-; rc=$?
-      if [ "$rc" -eq 0 ]; then
-        if [ "${#keep[@]}" -gt 0 ]; then printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"; else rm -f "$FAILFILE"; fi
-        say "ACTION ($why): restore --now rc=0, recovered (failed actions in the last hour: ${#keep[@]}/$MAX_ACTIONS)"
-      else
+      if [ "$rc" -ne 0 ] || [ "$st" != Running ]; then
         keep+=("$w")
         printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"
-        say "ACTION ($why): restore --now rc=$rc, FAILED (${#keep[@]}/$MAX_ACTIONS failed actions in the last hour)"
+      elif [ "${#keep[@]}" -gt 0 ]; then
+        printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"
+      else
+        rm -f "$FAILFILE"
+      fi
+      if [ "$rc" -eq 0 ]; then
+        say "ACTION ($why): restore --now rc=0, recovered (failed/restart actions in the last hour: ${#keep[@]}/$MAX_ACTIONS)"
+      else
+        say "ACTION ($why): restore --now rc=$rc, FAILED (${#keep[@]}/$MAX_ACTIONS failed/restart actions in the last hour)"
       fi
     fi
   fi

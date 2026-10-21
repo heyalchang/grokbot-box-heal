@@ -8,8 +8,8 @@ sockets with `ss -K` (exact 4-tuple, tailscaled's only); tailscaled redials and 
 login, no restart.
 `watchdog` is a 60 s loop (`WATCHDOG_INTERVAL` in config.env, required, 30..600) that does the same between runner runs (and calls
 `tailscale-restore.sh` if `tailscaled` dies while idle): one copy via flock on `state/ts-watchdog.lock`, one action per 60 s at
-most, and after `MAX_ACTIONS` (6) *failed* actions in a rolling hour (tracked in `state/ts-watchdog.fails`, one epoch per line) it
-stops acting, writes `state/ts-watchdog.capped`, and this check fails as NEEDS HUMAN. Log: `$BOX_WORKSPACE/tailscale/logs/ts-watch.log`
+most, and after `MAX_ACTIONS` (6) failed actions or daemon restarts in a rolling hour (tracked in `state/ts-watchdog.fails`, one epoch
+per line) it stops acting, writes `state/ts-watchdog.capped`, and this check fails as NEEDS HUMAN. Log: `$BOX_WORKSPACE/tailscale/logs/ts-watch.log`
 (one line per tick, rotated at 5 MB). `restore` (run by restore-all) starts the watchdog when it is not running and `DISABLED` is absent.
 Stop it: `pkill -f items/150-tailscale-online/watchdog`. Keep it off: `touch DISABLED` here (the loop exits within one tick).
 To re-arm after the cap: read the log, then remove both `state/ts-watchdog.capped` and `state/ts-watchdog.fails` (no pkill or

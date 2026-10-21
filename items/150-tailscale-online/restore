@@ -49,10 +49,10 @@ if pgrep -x tailscaled >/dev/null && [ -n "$TS" ]; then
 fi
 if [ "$st" != Running ]; then
   [ "${1:-}" = --now ] || exit $rc   # runner mode: 100-tailscale just ran
-  case "$st" in NeedsLogin|NeedsMachineAuth) exit 1 ;; esac
+  case "$st" in NeedsLogin|NeedsMachineAuth|Stopped) exit 1 ;; esac
   [ -x "$WS/bin/tailscale-restore.sh" ] || { log "FAIL: $WS/bin/tailscale-restore.sh missing"; exit 1; }
   log "ACTION: tailscaled state=${st:-down}; running tailscale-restore.sh"
-  TS_RESTORE_CALLER=watchdog BOX_WORKSPACE=$WS "$WS/bin/tailscale-restore.sh" >/dev/null 2>&1 || exit 1
+  TS_RESTORE_CALLER=watchdog BOX_WORKSPACE=$WS timeout 300 "$WS/bin/tailscale-restore.sh" >/dev/null 2>&1 || exit 1
   wait_online 30 && { log "RESTORED: tailscale-restore.sh brought node online"; exit $rc; }
   log "FAIL: still offline 30s after tailscale-restore.sh"
   exit 1
