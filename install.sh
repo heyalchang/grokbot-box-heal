@@ -67,6 +67,7 @@ for d in "$HERE"/jobs/*/; do
   for f in "$d"* ; do [ -f "$f" ] && cp -p "$f" "$dest/"; done
 done
 rm -f "$WS"/restore/state/agent-last-run.* "$WS/restore/agent-restore.log" \
+      "$WS"/restore/hook.log* "$WS/tailscale/restore.log" \
       "$WS/restore/state/baseline-last-run" "$WS/restore/state/update-last-check"
 install -m 0644 "$HERE/README.md" "$WS/restore/README.md"
 VER=$(tr -d ' \t\r\n' <"$HERE/VERSION" 2>/dev/null); VER=${VER:-unknown}

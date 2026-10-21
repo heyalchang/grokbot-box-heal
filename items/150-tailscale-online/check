@@ -5,8 +5,7 @@
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CAPFLAG=${BOX_WORKSPACE:-/workspace}/restore/state/ts-watchdog.capped
-FAILFILE=${BOX_WORKSPACE:-/workspace}/restore/state/ts-watchdog.fails
-[ -e "$CAPFLAG" ] && { echo "NEEDS HUMAN: ts-watchdog action cap reached ($(cat "$CAPFLAG")); remove $CAPFLAG and $FAILFILE"; exit 1; }
+[ -e "$CAPFLAG" ] && { echo "NEEDS HUMAN: ts-watchdog action cap reached ($(cat "$CAPFLAG")); remove $CAPFLAG"; exit 1; }
 if [ -e "$HERE/DISABLED" ]; then wd="watchdog DISABLED by flag"
 else "$HERE/watchdog" --running || { echo "ts-watchdog not running"; exit 1; }; wd="watchdog running"; fi
 TS=/usr/local/bin/tailscale; [ -x "$TS" ] || TS=$(command -v tailscale) || { echo "$wd; no tailscale binary (100-tailscale handles it)"; exit 0; }

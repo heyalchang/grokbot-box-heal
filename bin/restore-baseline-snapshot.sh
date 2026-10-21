@@ -11,7 +11,7 @@
 #  f) holds the same flock as restore-all.sh (state/.restore-all.lock)
 # Exit: 0 saved, no change vs previous baseline (also: first baseline, or today's already existed)
 #       10 saved and differences were found (report path printed on stdout)
-#       30 failed
+#       1 failed
 # Test options: --state-dir DIR (alt state root), --date YYYY-MM-DD (pretend date), --keep N; env PKG_DRIFT_CURRENT=<file>
 # Env: BOX_WORKSPACE (default /workspace)
 set -uo pipefail
@@ -25,17 +25,17 @@ while [ $# -gt 0 ]; do
     --date) DAY=${2:-}; shift ;;
     --keep) KEEP=${2:-}; shift ;;
     -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
-    *) echo "unknown arg: $1" >&2; exit 30 ;;
+    *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
   shift
 done
-[[ "$DAY" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && date -d "$DAY" >/dev/null 2>&1 || { echo "bad --date $DAY" >&2; exit 30; }
-[[ "$KEEP" =~ ^[0-9]+$ ]] && [ "$KEEP" -ge 1 ] || { echo "bad --keep $KEEP" >&2; exit 30; }
+[[ "$DAY" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && date -d "$DAY" >/dev/null 2>&1 || { echo "bad --date $DAY" >&2; exit 1; }
+[[ "$KEEP" =~ ^[0-9]+$ ]] && [ "$KEEP" -ge 1 ] || { echo "bad --keep $KEEP" >&2; exit 1; }
 if [ "$STATE" = "$WS/restore/state" ]; then LOG=$WS/restore/restore.log; else LOG=$STATE/restore.log; fi
 log() { printf '%s [baseline-snapshot pid %s %s] %s\n' "$(date '+%F %T %Z')" "$$" "$CALLER" "$*" >>"$LOG"; }
-fail() { log "FAILED: $*"; echo "FAILED: $*" >&2; exit 30; }
+fail() { log "FAILED: $*"; echo "FAILED: $*" >&2; exit 1; }
 
-mkdir -p "$STATE/baselines" "$STATE/drift" || { echo "FAILED: cannot create dirs under $STATE" >&2; exit 30; }
+mkdir -p "$STATE/baselines" "$STATE/drift" || { echo "FAILED: cannot create dirs under $STATE" >&2; exit 1; }
 exec 7>>"$STATE/.restore-all.lock"
 flock -w 600 7 || fail "could not get lock $STATE/.restore-all.lock within 600s"
 

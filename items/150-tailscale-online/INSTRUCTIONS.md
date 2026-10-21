@@ -12,6 +12,6 @@ most, and after `MAX_ACTIONS` (6) failed actions or daemon restarts in a rolling
 per line) it stops acting, writes `state/ts-watchdog.capped`, and this check fails as NEEDS HUMAN. Log: `$BOX_WORKSPACE/tailscale/logs/ts-watch.log`
 (one line per tick, rotated at 5 MB). `restore` (run by restore-all) starts the watchdog when it is not running and `DISABLED` is absent.
 Stop it: `pkill -f items/150-tailscale-online/watchdog`. Keep it off: `touch DISABLED` here (the loop exits within one tick).
-To re-arm after the cap: read the log, then remove both `state/ts-watchdog.capped` and `state/ts-watchdog.fails` (no pkill or
-restart needed).
+To re-arm after the cap: read the log, then remove `state/ts-watchdog.capped` (`ts-watchdog.fails` was already removed when the cap
+was reached; no pkill or restart needed).
 Failures alert the owner. Hard rules: never run `tailscale up`/login, never print keys, state contents, or login URLs.

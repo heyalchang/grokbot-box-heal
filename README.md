@@ -34,14 +34,13 @@ apt packages, running daemons, and root-only files (even under `/workspace`) do 
 /workspace/restore/
   config.env                                   your settings (not in git; created from config.env.example)
   README.md                                    this file
-  restore.log                                  runner log (rotated at 1 MB to restore.log.1)
-  hook.log, hook.log.1                         one line per real bashrc check; .1 is the rotated file
+  restore.log                                  kit journal: runner, hook, tailscale-restore, item 150, watchdog cap (rotated at 1 MB to restore.log.1)
   state/                                       locks, hook/job stamps, baselines/, drift/ reports,
                                                kit-version, kit-source, ts-watchdog.fails, ts-watchdog.capped
   items/_template, 050-hostname, 100-tailscale, 150-tailscale-online, 200-package-drift, 250-gh-auth, 300-bashrc-hook
   jobs/_template, 400-baseline-snapshot
-/workspace/tailscale/                          bin/ (offline binaries), state/ (root-only), state-backup/, restore.log,
-                                               logs/ (tailscaled-<date>.log, ts-watch.log: one line per watchdog tick)
+/workspace/tailscale/                          bin/ (offline binaries), state/ (root-only), state-backup/,
+                                               logs/ (tailscaled-<date>.log, pruned >14d on start; ts-watch.log: one line per watchdog tick)
 /workspace/config/gh/                          persistent gh login (optional)
 ```
 
@@ -133,20 +132,20 @@ contents, and every `INSTRUCTIONS.md` forbids agents from doing so.
 2. **Periodic jobs** (`jobs/NNN-name/` in order, after releasing `.restore-all.lock` and taking `.restore-jobs.lock`; `_template` is skipped):
    - Each job has an `INTERVAL` file (whole seconds `>= 60`, e.g. `86400` for daily) and an executable `run` script.
    - Checked against `state/job-last-run.<name>`. If not due yet (and `--only` was not given), skipped silently with no log line (if the previous run failed, its `NEEDS HUMAN` / `FAILED` status is still surfaced until the next run succeeds).
-   - When due (or matched by `--only`), run `run` (600 s limit, stdin `/dev/null`). Exit `0` = ok (does not bump exit code), `10`/`11` = FYI change, `2`/`20` = NEEDS HUMAN, anything else = FAILED.
+   - When due (or matched by `--only`), run `run` (600 s limit, stdin `/dev/null`).
 3. One summary line per item (and per due/failing job) goes to stdout and `restore.log`. One item or job failing never stops the others.
 
 ### Exit codes (worst wins: 30 > 20 > 10 > 0)
 | code | meaning | alert? |
 |---|---|---|
 | 0  | everything healthy, nothing done (or only routine jobs ran with exit 0) | no |
-| 10 | something was restored, or a job reported a change (exit 10/11); all fine now | FYI |
+| 10 | something was restored, or a job did work (exit 10); all fine now | FYI |
 | 20 | NEEDS HUMAN: an item or job needs a person (Tailscale NEEDS LOGIN, package drift, gh token rejected, config missing) | **yes** |
 | 30 | FAILED: an item is still broken after restore, or a job failed | **yes** |
 | 75 | another runner holds the lock; nothing done | no |
 
-`tailscale-restore.sh` on its own: 0 healthy/restored, 2 NEEDS LOGIN (or config/offline binaries missing), 3 no sudo, 4 binary install failed, 5 tailscaled won't start,
-6 still unhealthy, 75 busy. `restore-baseline-snapshot.sh`: 0 saved/no change, 10 saved with differences, 30 failed.
+**Shared exit-code table for everything the runner calls** (`restore`, `run`, `tailscale-restore.sh`, `restore-baseline-snapshot.sh`):
+`0` ok · `2` needs a human · `10` did work (jobs only; for items the runner sees work by checking before and after) · `75` busy, skip this round · anything else = failed. (`check` exits `0` when healthy, nonzero when it needs `restore`.)
 
 ## The `~/.bashrc` hook
 The `~/.bashrc` block is three lines (`[ -r /workspace/bin/restore-hook.sh ] && . /workspace/bin/restore-hook.sh` between markers)
@@ -154,11 +153,11 @@ above the interactive guard, so `bash -ilc` (agents), SSH and login shells all s
 - **Rate limit:** stamp `state/hook-last-run` holds "<boot id> <epoch>". Younger than 15 min and same boot: nothing else happens (no fork, ~0.05 ms on bash 5, where `$EPOCHSECONDS` exists; otherwise one `date +%s`). A missing or unusable epoch (non-numeric, oversized, or in the future) is stale: one launch, never an error and never a skip. If the boot id cannot be read, the stamp uses `-` so the 15-minute limit still applies. If `date` fails too, every shell launches and the log shows it.
   Otherwise it rewrites the stamp first (atomically, so concurrent shells skip), then:
 - **Launches `restore-all.sh --caller bashrc --quiet`** in the background, detached. On a new boot (boot id differs) and on the same boot alike. The hook does not inspect Tailscale or anything else itself: the items and jobs are the checks. A persistently broken box gets at most one run per 15 min. If `sudo -n` fails, the hook logs that and does not launch.
-- **Log:** each hook launch appends one line to `restore/hook.log` (rotated at 1 MB to `hook.log.1`). Fast-path skips are never logged. A failed write does not break the shell. The runner's own `restore.log` rotates at 1 MB too.
+- **Log:** each hook launch appends one `[hook]` line to `restore/restore.log` (which the runner rotates at 1 MB to `restore.log.1` under its lock). Fast-path skips are never logged. A failed write does not break the shell.
 - Loop guard: `RESTORE_ACTIVE` (set by the runner and watchdog) disables the hook in shells they spawn.
 - **What it costs:** one restore-all run per 15 minutes of agent activity: a few hundred ms of CPU, one `gh api user` call
-  (item 250), one dpkg query (item 200), six lines in `restore.log` (plus due jobs). Nothing runs while no shell starts except the Tailscale watchdog (to re-arm the watchdog after its 6-failed-actions/hour cap, remove both `state/ts-watchdog.capped` and `state/ts-watchdog.fails`); the daily routine is the backstop.
-- Item **300-bashrc-hook** checks that the 3-line block is still there and puts it back with `install.sh --hook-only` if an update reset the file.
+  (item 250), one dpkg query (item 200), six lines in `restore.log` (plus due jobs). Nothing runs while no shell starts except the Tailscale watchdog (to re-arm the watchdog after its 6-actions/hour cap, remove `state/ts-watchdog.capped`); the daily routine is the backstop.
+- Item **300-bashrc-hook** checks that `bin/restore-hook.sh` and the 3-line block are still there and puts them back with `install.sh --hook-only` if an update reset the file.
 
 ## Updates
 Read `git -C <clone> fetch origin main && git -C <clone> log --oneline <installed>..origin/main` first; the box runs this as root.
@@ -179,10 +178,9 @@ The hook only fires when some shell starts, so add one Grok Bot routine, once a 
 ## Adding an item or periodic job
 **Heal item** (`/workspace/restore/items/NNN-name/`, checked every 15 min; 050..300 are used by the kit, spaced by 50):
 1. `cp -r /workspace/restore/items/_template /workspace/restore/items/350-myname`
-2. `check`: read-only, fast (60 s hard limit), exit 0 if healthy, print one short line saying what it saw.
+2. `check`: read-only, fast (60 s hard limit), exit 0 if healthy (nonzero if it needs `restore`), print one short line saying what it saw.
 3. `restore`: idempotent, non-interactive (stdin is `/dev/null`, 600 s limit), `sudo -n` for root, prefer offline copies kept under
-   `/workspace` over the network. Exit `0` restored · `2` needs a human · `75` busy, skip this round · anything else =
-   failed, the runner alerts.
+   `/workspace` over the network, using the shared exit-code table above (`0` / `2` / `75` / other = failed).
 4. `INSTRUCTIONS.md`: runbook for a person or the daily agent (what healthy means, the steps, when to stop, and the hard rules).
 5. `chmod +x check restore`, then test: `/workspace/bin/restore-all.sh --only 350-myname`.
 6. `touch DISABLED` to pause an item.
@@ -190,7 +188,7 @@ The hook only fires when some shell starts, so add one Grok Bot routine, once a 
 **Periodic job** (`/workspace/restore/jobs/NNN-name/`, runs at most once per `INTERVAL` seconds; 400 is used by the kit):
 1. `cp -r /workspace/restore/jobs/_template /workspace/restore/jobs/450-myjob`
 2. Put the minimum seconds between runs (`>= 60`, e.g. `86400` for daily) in `INTERVAL`.
-3. `run`: executable script (600 s limit, stdin `/dev/null`) that does the job and prints one short line. Exit `0` ok · `10` FYI change · `2` or `20` needs a human · `75` busy · anything else = failed.
+3. `run`: executable script (600 s limit, stdin `/dev/null`) that does the job, prints one short line, and exits per the shared exit-code table above (`0` / `2` / `10` / `75` / other = failed).
 4. `chmod +x run`, then test now (ignores `INTERVAL` when `--only` is set): `/workspace/bin/restore-all.sh --only 450-myjob`.
 5. `touch DISABLED` to pause a job.
 

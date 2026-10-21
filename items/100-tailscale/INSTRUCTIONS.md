@@ -15,7 +15,7 @@ Use the saved node state. Never do a fresh login. Never approve anything.
 ## Step 1: run the script (always do this first)
 ```bash
 TS_RESTORE_CALLER=manual /workspace/bin/tailscale-restore.sh; echo "exit=$?"
-tail -n 20 /workspace/tailscale/restore.log
+tail -n 20 /workspace/restore/restore.log
 ```
 Exit codes:
 - `0`: healthy or restored. Run the Verify step, report, and stop.
@@ -23,9 +23,10 @@ Exit codes:
   run `tailscale login`, and do not run `tailscale up` in a way that opens or prints a login URL. Do not create auth keys. Log it
   (see Logging) and report that the box owner has to handle it themselves.
 - `75`: another restore holds the lock. Wait 30 s and run the script once more.
-- `3`: no passwordless sudo. `4`: binary install failed. `5`: tailscaled won't start. `6`: still unhealthy. For any of these, go to Step 2.
+- `1`: failed (no passwordless sudo, binary install failed, tailscaled won't start, or still unhealthy; see the `FAIL(1):` line in
+  `/workspace/restore/restore.log`). Go to Step 2.
 
-## Step 2: troubleshoot (only if the script failed with 3/4/5/6)
+## Step 2: troubleshoot (only if the script failed with 1)
 Check each item, fix what you find, then **re-run the script**. The script stays the tool that does the real work.
 1. **Binaries.** `ls -la /usr/local/bin/tailscale /usr/local/bin/tailscaled /workspace/tailscale/bin/`.
    Reinstall offline from the backup:
@@ -74,9 +75,8 @@ Expected: `Running`, `$WANT_TAILNET`, `$WANT_HOST`, (`$WANT_IP` if set), `RunSSH
 Then `/workspace/restore/items/100-tailscale/check` must exit 0.
 
 ## Logging
-Append one timestamped line per action you take, and one final result line, to `/workspace/tailscale/restore.log`
-(the Tailscale script's own log) **and** `/workspace/restore/restore.log` (the runner's log), e.g.
-`echo "$(date '+%F %T %Z') [100-tailscale] <what you did / result>" >> /workspace/tailscale/restore.log`.
+Append one timestamped line per action you take, and one final result line, to `/workspace/restore/restore.log`, e.g.
+`echo "$(date '+%F %T %Z') [100-tailscale] <what you did / result>" >> /workspace/restore/restore.log`.
 If you hit a login wall, the final line must contain `NEEDS LOGIN` (the runner treats that as NEEDS HUMAN).
 
 ## Hard rules

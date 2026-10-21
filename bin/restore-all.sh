@@ -8,7 +8,7 @@
 #
 # Usage: restore-all.sh [--caller NAME] [--only SUBSTR] [--quiet]
 # Exit:  0  everything healthy, nothing done (or only routine jobs ran with rc 0)
-#        10 something was restored or a job reported a change (rc 10/11); all fine now
+#        10 something was restored or a job reported a change (rc 10); all fine now
 #        20 NEEDS HUMAN: some item or job needs a person (e.g. NEEDS LOGIN, package drift); alert
 #        30 FAILED: some item is still broken after restore, or a job failed; alert
 #        75 another restore-all run holds the lock; nothing done (not an alert)
@@ -110,9 +110,9 @@ if [ -d "$JOBS" ]; then
       case $last_rc in ''|*[!0-9]*) last_rc=0 ;; esac
       if [ -z "$ONLY" ] && [ $((now - last_ts)) -lt "$int" ] && [ "$last_ts" -le "$now" ]; then
         case $last_rc in
-          0|10|11) ;;
-          2|20) n=$((n + 1)); say "job $jname: NEEDS HUMAN (last run $((now - last_ts))s ago exited $last_rc${last_out:+: $last_out})"; bump 20 ;;
-          *)    n=$((n + 1)); say "job $jname: FAILED (last run $((now - last_ts))s ago exited $last_rc${last_out:+: $last_out})"; bump 30 ;;
+          0|10) ;;
+          2)  n=$((n + 1)); say "job $jname: NEEDS HUMAN (last run $((now - last_ts))s ago exited $last_rc${last_out:+: $last_out})"; bump 20 ;;
+          *)  n=$((n + 1)); say "job $jname: FAILED (last run $((now - last_ts))s ago exited $last_rc${last_out:+: $last_out})"; bump 30 ;;
         esac
         continue
       fi
@@ -121,10 +121,10 @@ if [ -d "$JOBS" ]; then
       if [ "$jrc" -eq 75 ]; then say "job $jname: busy (skipped)"; continue; fi
       printf '%s %s %s\n' "$now" "$jrc" "$jout" >"$stamp.tmp" && mv -f "$stamp.tmp" "$stamp"
       case $jrc in
-        0)     say "job $jname: ok${jout:+ - $jout}" ;;
-        10|11) say "job $jname: ${jout:-done (rc=$jrc)}"; bump 10 ;;
-        2|20)  say "job $jname: NEEDS HUMAN (rc=$jrc${jout:+: $jout})"; bump 20 ;;
-        *)     say "job $jname: FAILED (rc=$jrc${jout:+: $jout})"; bump 30 ;;
+        0)  say "job $jname: ok${jout:+ - $jout}" ;;
+        10) say "job $jname: ${jout:-done (rc=10)}"; bump 10 ;;
+        2)  say "job $jname: NEEDS HUMAN (rc=2${jout:+: $jout})"; bump 20 ;;
+        *)  say "job $jname: FAILED (rc=$jrc${jout:+: $jout})"; bump 30 ;;
       esac
     done
     exec 8>&-

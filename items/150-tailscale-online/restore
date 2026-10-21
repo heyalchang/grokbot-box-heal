@@ -10,8 +10,8 @@
 # STUCK = unacked > 0 and (backoff >= 3, or backoff >= 2 with nothing received for >= 20 s) (a socket the kernel is retransmitting into the void).
 # Exit: 0 ok | 1 failed (still offline / watchdog won't start) | 2 NEEDS HUMAN (watchdog action cap reached, see state flag)
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-WS=${BOX_WORKSPACE:-/workspace}; LOG=$WS/tailscale/restore.log; HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-CAPFLAG=$WS/restore/state/ts-watchdog.capped; FAILFILE=$WS/restore/state/ts-watchdog.fails
+WS=${BOX_WORKSPACE:-/workspace}; LOG=$WS/restore/restore.log; HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+CAPFLAG=$WS/restore/state/ts-watchdog.capped
 log() { printf '%s [150-tailscale-online %s] %s\n' "$(date '+%F %T %Z')" "${RESTORE_CALLER:-manual}" "$*" >>"$LOG"; }
 TS=/usr/local/bin/tailscale; [ -x "$TS" ] || TS=$(command -v tailscale)
 online() { timeout 10 sudo -n "$TS" status --json 2>/dev/null | jq -e '.BackendState == "Running" and .Self.Online == true' >/dev/null 2>&1; }
@@ -36,7 +36,7 @@ abort() {   # abort <all|stuck> -> echoes count; each socket by its exact 4-tupl
   echo "$n"
 }
 rc=0
-[ -e "$CAPFLAG" ] && { log "NEEDS HUMAN: ts-watchdog hit its action cap ($(cat "$CAPFLAG")); remove $CAPFLAG and $FAILFILE after looking"; exit 2; }
+[ -e "$CAPFLAG" ] && { log "NEEDS HUMAN: ts-watchdog hit its action cap ($(cat "$CAPFLAG")); remove $CAPFLAG after looking"; exit 2; }
 # 1. watchdog (idempotent: it holds a flock and exits at once if another copy runs)
 if [ ! -e "$HERE/DISABLED" ] && ! "$HERE/watchdog" --running; then
   ( exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&-; BOX_WORKSPACE=$WS RESTORE_ACTIVE= setsid nohup "$HERE/watchdog" </dev/null >/dev/null 2>&1 & )

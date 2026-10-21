@@ -11,9 +11,8 @@
 #  - cap: MAX_ACTIONS (6) failed actions or daemon restarts (when tailscaled was not Running) per rolling hour, tracked in
 #    $WS/restore/state/ts-watchdog.fails (one epoch per line). A socket-abort action on a Running node that brings it back online
 #    does not count: a box that freezes every 15 min and recovers every time keeps working; a crash-looping tailscaled hits the cap.
-#    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (item 150's check then fails -> runner/daily routine
-#    alert) and only logs.
-#    To re-arm, remove both ts-watchdog.capped and ts-watchdog.fails (no pkill or restart needed).
+#    Past the cap it stops acting, writes $WS/restore/state/ts-watchdog.capped (removing ts-watchdog.fails; item 150's check then
+#    fails -> runner/daily routine alert) and only logs. Re-arm: remove ts-watchdog.capped (no pkill or restart needed).
 #  - kill switch: $HERE/DISABLED is checked every tick and before every action; the loop exits within one tick.
 #    For an immediate stop also run: pkill -f items/150-tailscale-online/watchdog
 #  - log: rotates at 5 MB to ts-watch.log.1 (max ~10 MB on disk; ~0.35 MB/day at a 60 s tick).
@@ -75,11 +74,11 @@ while :; do
       done <"$FAILFILE"
     fi
     if [ "${#keep[@]}" -ge "$MAX_ACTIONS" ] || [ -e "$CAPFLAG" ]; then
-      if [ "${#keep[@]}" -gt 0 ]; then printf '%s\n' "${keep[@]}" >"$FAILFILE.tmp" && mv -f "$FAILFILE.tmp" "$FAILFILE"; else rm -f "$FAILFILE"; fi
       if [ ! -e "$CAPFLAG" ]; then
         echo "${#keep[@]} failed/restart actions within 1h, last at $(date '+%F %T %Z')" >"$CAPFLAG"
-        say "CAP REACHED (${#keep[@]} failed/restart actions/h): NOT acting any more; NEEDS HUMAN. Remove $CAPFLAG and $FAILFILE to re-arm."
-        printf '%s [ts-watchdog] NEEDS HUMAN: action cap reached (%s failed/restart/h); stopped acting (%s)\n' "$(date '+%F %T %Z')" "$MAX_ACTIONS" "$CAPFLAG" >>"$WS/tailscale/restore.log"
+        rm -f "$FAILFILE"
+        say "CAP REACHED (${#keep[@]} failed/restart actions/h): NOT acting any more; NEEDS HUMAN. Remove $CAPFLAG to re-arm."
+        printf '%s [ts-watchdog] NEEDS HUMAN: action cap reached (%s failed/restart/h); stopped acting (%s)\n' "$(date '+%F %T %Z')" "$MAX_ACTIONS" "$CAPFLAG" >>"$WS/restore/restore.log"
       fi
     elif [ ! -e "$HERE/DISABLED" ]; then
       last_act=$w
