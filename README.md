@@ -136,7 +136,7 @@ For each `items/NN-name/` in order (names starting with two digits and a dash; `
 
 ## The `~/.bashrc` hook
 Runs above the interactive guard, so `bash -ilc` (agents), SSH and login shells all run it. Silent, scripts only:
-- **Rate limit:** stamp `state/hook-last-run` holds "<boot id> <epoch>". Younger than 15 min and same boot: nothing else happens (no fork, ~0.05 ms). A missing or unusable epoch (non-numeric, oversized, or in the future) is stale: one check, never an error and never a skip.
+- **Rate limit:** stamp `state/hook-last-run` holds "<boot id> <epoch>". Younger than 15 min and same boot: nothing else happens (no fork, ~0.05 ms on bash 5, where `$EPOCHSECONDS` exists; otherwise one `date +%s`). A missing or unusable epoch (non-numeric, oversized, or in the future) is stale: one check, never an error and never a skip. If the boot id cannot be read, the stamp uses `-` so the 15-minute limit still applies. If `date` fails too, every shell checks and the log shows it.
   Otherwise it rewrites the stamp first (atomically, so concurrent shells skip), then:
 - **New boot** (boot id differs): launches `restore-all.sh --caller bashrc --quiet` in the background at once.
 - **Same boot:** `timeout 2 sudo -n tailscale status --json`; launches restore-all only if it is not `BackendState=Running` and
