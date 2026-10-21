@@ -1,6 +1,6 @@
 # 150-tailscale-online
 Healthy = `sudo tailscale status --json` shows `BackendState=Running` and `Self.Online=true`, and the `watchdog` loop is running
-(or `DISABLED` is present). Item 10 only checks `Running`, which stays true while the control session is dead.
+(or `DISABLED` is present). Item 100 only checks `Running`, which stays true while the control session is dead.
 Why: the box VM is paused while idle. All outbound TCP goes through a host-side proxy that drops tailscaled's flows across a pause
 without an RST, so tailscaled retransmits into dead sockets for ~15 min and the node drops off the tailnet. `restore` aborts those
 sockets with `ss -K` (exact 4-tuple, tailscaled's only); tailscaled redials and is online again in about a second. Same node, no

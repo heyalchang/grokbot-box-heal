@@ -58,7 +58,7 @@ Everything personal comes from one file, `/workspace/restore/config.env` (source
 | `TAILSCALE_SSH` | no | `on` (default) or `off`: whether other devices on your tailnet can SSH into this box via Tailscale SSH |
 | `GH_USER` | no | GitHub login gh should be signed in as; empty = any account (and the item passes if gh auth isn't set up) |
 | `UPDATE_MODE` | no | `auto` (default), `ask` or `off`; see [Updates](#updates) |
-| `WANT_OS_HOSTNAME` | no | Linux hostname item 05 keeps; empty = not managed |
+| `WANT_OS_HOSTNAME` | no | Linux hostname item 050 keeps; empty = not managed |
 | `WATCHDOG_INTERVAL` | yes (150-tailscale-online) | watchdog tick in seconds, 30..600 (60 in the example). Missing or malformed: the watchdog refuses to start and item 150 fails |
 
 Until `WANT_HOST` and `WANT_TAILNET` are set, `100-tailscale` reports NEEDS HUMAN. If you don't use Tailscale, disable both Tailscale items:
