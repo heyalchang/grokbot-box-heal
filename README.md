@@ -135,7 +135,8 @@ For each `items/NN-name/` in order (names starting with two digits and a dash; `
 
 ## The `~/.bashrc` hook
 Runs above the interactive guard, so `bash -ilc` (agents), SSH and login shells all run it. Silent, scripts only:
-- **Rate limit:** stamp `state/hook-last-run` holds the boot id. Younger than 15 min and same boot: nothing else happens (~1 ms).
+- **Rate limit:** stamp `state/hook-last-run` holds "<boot id> <epoch>". Younger than 15 min and same boot: nothing else happens (no fork, ~0.05 ms).
+- **Log:** each real check appends one line to `restore/hook.log` (what it saw and what it decided; rotated at 1 MB to `hook.log.1`). Fast-path skips are never logged.
   Otherwise it rewrites the stamp first (atomically, so concurrent shells skip), then:
 - **New boot** (boot id differs): launches `restore-all.sh --caller bashrc --quiet` in the background at once.
 - **Same boot:** `timeout 2 sudo -n tailscale status --json`; launches restore-all only if it is not `BackendState=Running` and
